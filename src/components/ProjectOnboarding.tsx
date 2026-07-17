@@ -1,10 +1,11 @@
-import { ArrowLeft, ArrowRight, Check, FileSpreadsheet, FolderOpen, ReceiptText, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, FileArchive, FileSpreadsheet, FolderOpen, ReceiptText, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import type { IncomeType, ProjectData } from "../types";
 
 interface ProjectOnboardingProps {
   project: ProjectData;
+  projectFilePath?: string;
   requiresDirectory: boolean;
   updateProject: (updater: (project: ProjectData) => ProjectData) => void;
   onChooseDirectory: () => Promise<boolean>;
@@ -14,11 +15,11 @@ interface ProjectOnboardingProps {
 
 const steps = [
   { title: "팀 기본정보", description: "보고서 제목과 활동 기간을 먼저 정합니다." },
-  { title: "들어온 재정", description: "회비와 지원금처럼 사용할 수 있는 돈을 입력합니다." },
-  { title: "저장 준비", description: "영수증과 프로젝트가 보관될 폴더를 정합니다." },
+  { title: "수입 입력", description: "회비 단가와 인원수, 지원금을 입력합니다." },
+  { title: "저장 준비", description: "이미지를 포함할 프로젝트 파일을 만듭니다." },
 ];
 
-export default function ProjectOnboarding({ project, requiresDirectory, updateProject, onChooseDirectory, onFinish, onOpen }: ProjectOnboardingProps) {
+export default function ProjectOnboarding({ project, projectFilePath, requiresDirectory, updateProject, onChooseDirectory, onFinish, onOpen }: ProjectOnboardingProps) {
   const [step, setStep] = useState(0);
   const meta = project.meta;
   const setMeta = (key: keyof ProjectData["meta"], value: string | number) => updateProject((current) => ({ ...current, meta: { ...current.meta, [key]: value } }));
@@ -29,7 +30,9 @@ export default function ProjectOnboarding({ project, requiresDirectory, updatePr
     return { ...current, incomes: [...current.incomes, { id: crypto.randomUUID(), type, amount, receivedAt: "", memo: "" }] };
   });
   const basicReady = Boolean(meta.community.trim() && meta.teamName.trim());
-  const storageReady = !requiresDirectory || Boolean(project.projectDirectory);
+  const duesTotal = Math.max(0, project.duesPerPerson) * Math.max(0, meta.headcount);
+  const totalIncome = duesTotal + incomeAmount("teamSupport") + incomeAmount("flowing");
+  const storageReady = !requiresDirectory || Boolean(projectFilePath);
 
   return <main className="onboarding-shell">
     <div className="onboarding-brand"><span><ReceiptText size={20} /></span><div><strong>바른장부</strong><small>처음 회계해도 순서대로</small></div></div>
@@ -47,27 +50,28 @@ export default function ProjectOnboarding({ project, requiresDirectory, updatePr
             <OnboardingField label="팀 이름" value={meta.teamName} placeholder="예: 강릉팀" onChange={(value) => setMeta("teamName", value)} />
             <OnboardingField label="그룹" value={meta.groupName} placeholder="선택 입력" onChange={(value) => setMeta("groupName", value)} />
             <OnboardingField label="사역지" value={meta.destination} placeholder="예: 강원도 강릉" onChange={(value) => setMeta("destination", value)} />
+            <OnboardingField label="인원수" type="number" value={String(meta.headcount || "")} placeholder="예: 12" onChange={(value) => setMeta("headcount", Math.max(0, Number(value) || 0))} />
             <OnboardingField label="출발일" type="date" value={meta.startDate} onChange={(value) => setMeta("startDate", value)} />
             <OnboardingField label="귀국일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} />
           </div>
           {!basicReady && <p className="onboarding-hint">공동체와 팀 이름만 입력하면 다음으로 갈 수 있습니다.</p>}
         </>}
         {step === 1 && <>
-          <div className="onboarding-heading"><span>2 / 3</span><h2>사용할 수 있는 재정은 얼마인가요?</h2><p>아직 모르면 비워 두고 나중에 프로젝트 설정에서 입력해도 됩니다.</p></div>
+          <div className="onboarding-heading"><span>2 / 3</span><h2>사용할 수 있는 재정은 얼마인가요?</h2><p>회비는 1인당 금액과 인원수를 곱해 계산합니다. 나중에 회계 입력·검토 화면에서 바꿀 수 있습니다.</p></div>
           <div className="income-onboarding-list">
-            <IncomeRow number="1" title="회비" description="팀원들이 낸 회비" value={incomeAmount("dues")} onChange={(amount) => setIncomeAmount("dues", amount)} />
+            <DuesIncomeRow value={project.duesPerPerson} headcount={meta.headcount} onChange={(amount) => updateProject((current) => ({ ...current, duesPerPerson: amount }))} />
             <IncomeRow number="2" title="팀별사역지원금" description="교회에서 팀에 지원한 사역비" value={incomeAmount("teamSupport")} onChange={(amount) => setIncomeAmount("teamSupport", amount)} />
             <IncomeRow number="3" title="재정플로잉" description="추가로 흘려보내 받은 재정" value={incomeAmount("flowing")} onChange={(amount) => setIncomeAmount("flowing", amount)} />
           </div>
-          <div className="onboarding-total"><span>현재 총수입</span><strong>{(incomeAmount("dues") + incomeAmount("teamSupport") + incomeAmount("flowing")).toLocaleString("ko-KR")}원</strong></div>
+          <div className="onboarding-total"><span>현재 총수입</span><strong>{totalIncome.toLocaleString("ko-KR")}원</strong></div>
         </>}
         {step === 2 && <>
-          <div className="onboarding-heading"><span>3 / 3</span><h2>프로젝트를 어디에 보관할까요?</h2><p>이 폴더 안에 프로젝트 파일과 영수증 사본이 함께 정리됩니다.</p></div>
-          <button className={`storage-choice ${project.projectDirectory ? "selected" : ""}`} onClick={onChooseDirectory}>
-            <span><FolderOpen size={27} /></span><div><strong>{project.projectDirectory ? "저장 폴더 선택 완료" : "저장 폴더 선택"}</strong><small>{project.projectDirectory || "문서 폴더 안에 팀 전용 폴더를 새로 만드는 것을 권장합니다."}</small></div>{project.projectDirectory && <Check size={21} />}
+          <div className="onboarding-heading"><span>3 / 3</span><h2>프로젝트 파일을 만들어 둘까요?</h2><p>영수증 이미지와 입력 내용을 하나의 .barun 파일에 함께 보관합니다.</p></div>
+          <button className={`storage-choice ${projectFilePath ? "selected" : ""}`} onClick={onChooseDirectory}>
+            <span><FileArchive size={27} /></span><div><strong>{projectFilePath ? "프로젝트 파일 준비 완료" : ".barun 프로젝트 저장"}</strong><small>{projectFilePath || "원하는 폴더와 파일 이름을 선택하세요. 나중에 다른 컴퓨터로 파일 하나만 옮기면 됩니다."}</small></div>{projectFilePath && <Check size={21} />}
           </button>
-          <div className="onboarding-output-preview"><div><FileSpreadsheet size={22} /><span><strong>회계보고서 Excel</strong><small>원본 양식의 복사본</small></span></div><ArrowRight size={16} /><div><ReceiptText size={22} /><span><strong>영수증철</strong><small>인쇄 또는 PDF 저장</small></span></div></div>
-          <div className="safe-note"><Sparkles size={18} /><span><strong>이후부터는 자동 저장됩니다.</strong><small>입력할 때마다 선택한 폴더의 `회계프로젝트.json`이 안전하게 갱신됩니다.</small></span></div>
+          <div className="onboarding-output-preview"><div><FileSpreadsheet size={22} /><span><strong>회계보고서 Excel</strong><small>원본 양식의 복사본</small></span></div><ArrowRight size={16} /><div><ReceiptText size={22} /><span><strong>영수증철 PDF</strong><small>편집한 이미지 배치 반영</small></span></div></div>
+          <div className="safe-note"><Sparkles size={18} /><span><strong>이후부터는 자동 저장됩니다.</strong><small>입력 내용과 첨부 이미지를 선택한 .barun 파일에 함께 저장합니다.</small></span></div>
         </>}
         <div className="onboarding-actions">
           {step > 0 ? <button className="button ghost" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={17} /> 이전</button> : <span />}
@@ -84,4 +88,8 @@ function OnboardingField({ label, value, onChange, placeholder, type = "text" }:
 
 function IncomeRow({ number, title, description, value, onChange }: { number: string; title: string; description: string; value: number; onChange: (value: number) => void }) {
   return <label className="income-onboarding-row"><span>{number}</span><div><strong>{title}</strong><small>{description}</small></div><div className="money-input"><input type="number" min="0" value={value || ""} placeholder="0" onChange={(event) => onChange(Number(event.target.value))} /><em>원</em></div></label>;
+}
+
+function DuesIncomeRow({ value, headcount, onChange }: { value: number; headcount: number; onChange: (value: number) => void }) {
+  return <label className="income-onboarding-row dues-onboarding-row"><span>1</span><div><strong>회비</strong><small>1인당 회비 × {headcount.toLocaleString("ko-KR")}명</small></div><div className="dues-onboarding-input"><div className="money-input"><input type="number" min="0" value={value || ""} placeholder="1인당 금액" onChange={(event) => onChange(Math.max(0, Number(event.target.value) || 0))} /><em>원</em></div><strong>= {(value * headcount).toLocaleString("ko-KR")}원</strong></div></label>;
 }

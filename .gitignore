@@ -11,4 +11,6 @@ reference/
 .env.*
 !.env.example
 회계프로젝트.json
+*.barun
+.*-barun-work/
 attachments/

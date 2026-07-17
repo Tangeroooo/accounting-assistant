@@ -50,6 +50,12 @@ export interface Attachment {
   relativePath: string;
   originalName: string;
   mimeType: string;
+  layout?: {
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+    rotation: number;
+  };
   kind:
     | "offline-preview"
     | "online-receipt"
@@ -100,6 +106,7 @@ export interface ProjectData {
   id: string;
   projectDirectory?: string;
   meta: ProjectMeta;
+  duesPerPerson: number;
   incomes: Income[];
   people: Person[];
   expenses: Expense[];
@@ -145,6 +152,7 @@ export const createEmptyProject = (): ProjectData => ({
     pastorName: "",
     submissionDate: "",
   },
+  duesPerPerson: 0,
   incomes: [],
   people: [],
   expenses: [],

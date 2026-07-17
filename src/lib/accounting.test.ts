@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDerivedState, assignPayerFromExpense, settlementSummaries, sortAndNumberExpenses, validateProject } from "./accounting";
+import { applyDerivedState, assignPayerFromExpense, incomeTotals, reconciliationSummary, settlementSummaries, sortAndNumberExpenses, validateProject } from "./accounting";
 import { createEmptyProject, type Expense } from "../types";
 
 const expense = (partial: Partial<Expense>): Expense => ({
@@ -49,6 +49,17 @@ describe("금전출납부 정렬과 번호", () => {
   });
 });
 describe("교육자료 기반 검산", () => {
+  it("회비 단가와 인원수를 곱하고 지출 입력값을 포함해 차액을 즉시 검산한다", () => {
+    const project = createEmptyProject();
+    project.meta.headcount = 5;
+    project.duesPerPerson = 20_000;
+    project.incomes = [{ id: "support", type: "teamSupport", amount: 50_000, receivedAt: "", memo: "" }];
+    project.expenses = [expense({ amount: 80_000 })];
+
+    expect(incomeTotals(project)).toMatchObject({ dues: 100_000, teamSupport: 50_000, total: 150_000 });
+    expect(reconciliationSummary(project)).toMatchObject({ returnAmount: 50_000, difference: 20_000 });
+  });
+
   it("지출 입력 중 새 결제자 이름을 바로 등록하고 같은 이름은 재사용한다", () => {
     const first = assignPayerFromExpense([], expense({ paymentSource: "personal", amount: 25_000 }), " 김회계 ");
     expect(first.people).toHaveLength(1);

@@ -60,9 +60,12 @@ export function expenseTotals(expenses: Expense[]) {
 }
 
 export function incomeTotals(project: ProjectData) {
-  const dues = project.incomes
+  const storedDues = project.incomes
     .filter((income) => income.type === "dues")
     .reduce((sum, income) => sum + income.amount, 0);
+  const dues = Number.isFinite(project.duesPerPerson)
+    ? Math.max(0, project.duesPerPerson) * Math.max(0, project.meta.headcount)
+    : storedDues;
   const teamSupport = project.incomes
     .filter((income) => income.type === "teamSupport")
     .reduce((sum, income) => sum + income.amount, 0);
@@ -70,6 +73,14 @@ export function incomeTotals(project: ProjectData) {
     .filter((income) => income.type === "flowing")
     .reduce((sum, income) => sum + income.amount, 0);
   return { dues, teamSupport, flowing, total: dues + teamSupport + flowing };
+}
+
+export function reconciliationSummary(project: ProjectData) {
+  const income = incomeTotals(project);
+  const expense = expenseTotals(project.expenses);
+  const returnAmount = Math.max(income.teamSupport - expense.byCategory.teamMinistry, 0);
+  const difference = income.total - expense.total - returnAmount;
+  return { income, expense, returnAmount, difference };
 }
 
 export function settlementSummaries(project: ProjectData): SettlementSummary[] {
@@ -107,11 +118,7 @@ const hasAttachment = (expense: Expense, kinds: Expense["attachments"][number]["
 export function validateProject(project: ProjectData): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const expenses = sortAndNumberExpenses(project.expenses);
-  const income = incomeTotals(project);
-  const expense = expenseTotals(expenses);
-  const teamMinistrySpent = expense.byCategory.teamMinistry;
-  const returnAmount = Math.max(income.teamSupport - teamMinistrySpent, 0);
-  const reconciledDifference = income.total - expense.total - returnAmount;
+  const { difference: reconciledDifference } = reconciliationSummary({ ...project, expenses });
 
   if (reconciledDifference !== 0) {
     issues.push({
@@ -169,7 +176,7 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
         scope: "evidence",
         expenseId: item.id,
         title: "온라인 영수증 파일이 없습니다",
-        detail: "영수증철에 인쇄할 이미지 또는 PDF를 등록해 주세요.",
+        detail: "영수증철 PDF에 넣을 이미지 또는 PDF를 등록해 주세요.",
       });
     }
     if (item.category === "meals" && !item.mealHeadcount) {
@@ -222,6 +229,23 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
 }
 
 export function applyDerivedState(project: ProjectData): ProjectData {
+  const existingDues = project.incomes
+    .filter((income) => income.type === "dues")
+    .reduce((sum, income) => sum + income.amount, 0);
+  const duesPerPerson = Number.isFinite(project.duesPerPerson)
+    ? Math.max(0, project.duesPerPerson)
+    : project.meta.headcount > 0
+      ? Math.round(existingDues / project.meta.headcount)
+      : 0;
+  const duesAmount = duesPerPerson * Math.max(0, project.meta.headcount);
+  const firstDues = project.incomes.find((income) => income.type === "dues");
+  const incomes = firstDues
+    ? project.incomes
+      .map((income) => income.id === firstDues.id ? { ...income, amount: duesAmount } : income)
+      .filter((income, index, items) => income.type !== "dues" || items.findIndex((candidate) => candidate.type === "dues") === index)
+    : duesAmount > 0
+      ? [...project.incomes, { id: crypto.randomUUID(), type: "dues" as const, amount: duesAmount, receivedAt: "", memo: "팀 회비" }]
+      : project.incomes;
   const expenses = sortAndNumberExpenses(project.expenses).map((expense) => {
     if (expense.paymentSource === "team") {
       return {
@@ -241,5 +265,5 @@ export function applyDerivedState(project: ProjectData): ProjectData {
           : "partial";
     return { ...expense, settlementTargetAmount: target, settlementStatus: status };
   });
-  return { ...project, expenses, updatedAt: new Date().toISOString() };
+  return { ...project, duesPerPerson, incomes, expenses, updatedAt: new Date().toISOString() };
 }

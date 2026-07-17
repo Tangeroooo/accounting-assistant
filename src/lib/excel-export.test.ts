@@ -41,6 +41,8 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     const project = createEmptyProject();
     project.meta.community = "테스트";
     project.meta.teamName = "강릉팀";
+    project.meta.headcount = 7;
+    project.duesPerPerson = 40_000;
     project.people = [{ id: "payer-secret", name: "비공개 결제자", bankMemo: "비공개 계좌" }];
     project.expenses = Array.from({ length: 7 }, (_, index) => makeExpense(index + 1));
     project.incomes = [{ id: "income", type: "dues", amount: 280_000, receivedAt: "2026-07-01", memo: "" }];

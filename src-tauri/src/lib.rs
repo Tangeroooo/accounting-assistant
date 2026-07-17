@@ -62,6 +62,21 @@ fn load_project(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn prepare_project_workspace(package_path: String) -> Result<String, String> {
+    let package = PathBuf::from(package_path);
+    let parent = package
+        .parent()
+        .ok_or_else(|| "프로젝트 파일의 상위 폴더를 찾을 수 없습니다.".to_string())?;
+    let stem = package
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("project");
+    let workspace = parent.join(format!(".{}-barun-work", clean_file_name(stem)));
+    fs::create_dir_all(&workspace).map_err(|error| error.to_string())?;
+    Ok(workspace.to_string_lossy().to_string())
+}
+
 fn clean_file_name(file_name: &str) -> String {
     file_name
         .chars()
@@ -204,6 +219,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             save_project,
             load_project,
+            prepare_project_workspace,
             copy_attachment,
             read_binary_file,
             write_binary_file,

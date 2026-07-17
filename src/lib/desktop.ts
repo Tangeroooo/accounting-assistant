@@ -1,6 +1,7 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { Attachment } from "../types";
+import type { Attachment, ProjectData } from "../types";
+import { BARUN_EXTENSION, createBarunPackage, parseBarunPackage } from "./project-package";
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
@@ -16,7 +17,7 @@ export async function chooseProjectFile() {
     directory: false,
     multiple: false,
     title: "회계 프로젝트 열기",
-    filters: [{ name: "회계 프로젝트", extensions: ["json"] }],
+    filters: [{ name: "바른장부 프로젝트", extensions: [BARUN_EXTENSION, "json"] }],
   });
   return typeof selected === "string" ? selected : null;
 }
@@ -48,6 +49,64 @@ export async function loadProjectFile(path: string) {
   return invoke<string>("load_project", { path });
 }
 
+const parentDirectory = (path: string) => path.replace(/[\\/][^\\/]+$/, "");
+
+async function packageBytes(project: ProjectData) {
+  return createBarunPackage(project, async (relativePath) => {
+    if (!project.projectDirectory) throw new Error("첨부파일 작업 폴더가 준비되지 않았습니다.");
+    return readAttachmentBytes(attachmentAbsolutePath(project.projectDirectory, relativePath));
+  });
+}
+
+async function writeBytes(path: string, bytes: Uint8Array) {
+  await invoke("write_binary_file", { path, bytes: Array.from(bytes) });
+}
+
+async function prepareWorkspace(packagePath: string) {
+  return invoke<string>("prepare_project_workspace", { packagePath });
+}
+
+async function extractAssets(bytes: Uint8Array, workspaceDirectory: string) {
+  const parsed = await parseBarunPackage(bytes);
+  for (const [relativePath, content] of parsed.assets) {
+    await writeBytes(`${workspaceDirectory}/${relativePath}`, content);
+  }
+  return parsed.project;
+}
+
+export async function saveProjectPackage(project: ProjectData, packagePath: string) {
+  if (!isTauri()) {
+    localStorage.setItem("accounting-assistant-project", JSON.stringify(project));
+    return;
+  }
+  await writeBytes(packagePath, await packageBytes(project));
+}
+
+export async function saveProjectPackageAs(project: ProjectData, defaultName: string) {
+  if (!isTauri()) return null;
+  const packagePath = await save({
+    defaultPath: defaultName,
+    filters: [{ name: "바른장부 프로젝트", extensions: [BARUN_EXTENSION] }],
+  });
+  if (!packagePath) return null;
+  const bytes = await packageBytes(project);
+  await writeBytes(packagePath, bytes);
+  const workspaceDirectory = await prepareWorkspace(packagePath);
+  await extractAssets(bytes, workspaceDirectory);
+  return { packagePath, project: { ...project, projectDirectory: workspaceDirectory } };
+}
+
+export async function openProjectDocument(path: string): Promise<{ project: ProjectData; packagePath?: string }> {
+  if (path.toLowerCase().endsWith(".json")) {
+    const project = JSON.parse(await loadProjectFile(path)) as ProjectData;
+    return { project: { ...project, projectDirectory: project.projectDirectory || parentDirectory(path) } };
+  }
+  const bytes = new Uint8Array(await invoke<number[]>("read_binary_file", { path }));
+  const workspaceDirectory = await prepareWorkspace(path);
+  const portableProject = await extractAssets(bytes, workspaceDirectory);
+  return { project: { ...portableProject, projectDirectory: workspaceDirectory }, packagePath: path } as { project: ProjectData; packagePath: string };
+}
+
 export async function importAttachment(projectDirectory: string): Promise<Attachment | null> {
   const sourcePath = await chooseAttachment();
   if (!sourcePath) return null;
@@ -73,7 +132,17 @@ export async function importAttachment(projectDirectory: string): Promise<Attach
   };
 }
 
-export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: string) {
+export async function importClipboardAttachment(projectDirectory: string, file: File): Promise<Attachment> {
+  if (!isTauri()) throw new Error("설치형 앱에서 클립보드 이미지를 프로젝트에 넣을 수 있습니다.");
+  const mimeType = file.type || "image/png";
+  const extension = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
+  const originalName = file.name && !file.name.startsWith("image.") ? file.name : `클립보드-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
+  const relativePath = `attachments/clipboard-${crypto.randomUUID()}.${extension}`;
+  await writeBytes(`${projectDirectory}/${relativePath}`, new Uint8Array(await file.arrayBuffer()));
+  return { id: crypto.randomUUID(), relativePath, originalName, mimeType, kind: "online-receipt" };
+}
+
+export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: string, fileType: "excel" | "pdf" = "excel") {
   if (!isTauri()) {
     const blob = new Blob([bytes as BlobPart]);
     const url = URL.createObjectURL(blob);
@@ -86,7 +155,7 @@ export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: strin
   }
   const path = await save({
     defaultPath: defaultName,
-    filters: [{ name: "Excel 통합문서", extensions: ["xlsx"] }],
+    filters: [fileType === "pdf" ? { name: "PDF 문서", extensions: ["pdf"] } : { name: "Excel 통합문서", extensions: ["xlsx"] }],
   });
   if (!path) return null;
   await invoke("write_binary_file", { path, bytes: Array.from(bytes) });
