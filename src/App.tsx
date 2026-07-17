@@ -492,8 +492,31 @@ function ExpensesView({ project, onAdd, onEdit, onDelete }: { project: ProjectDa
   </section>;
 }
 
+const RECEIPTS_PER_PAGE = 6;
+
+type ReceiptBookItem = {
+  id: string;
+  expense: Expense;
+  attachment?: Attachment;
+  supporting: boolean;
+};
+
 function ReceiptBookView({ project, updateProject }: { project: ProjectData; updateProject: (updater: (project: ProjectData) => ProjectData) => void }) {
   const transportFuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
+  const receiptItems: ReceiptBookItem[] = project.expenses.flatMap((expense) => {
+    const baseAttachment = expense.receiptMode === "online-printable" ? expense.attachments[0] : undefined;
+    const supporting = expense.receiptMode === "online-printable"
+      ? expense.attachments.slice(1)
+      : expense.attachments.filter((attachment) => attachment.kind !== "offline-preview");
+    return [
+      { id: `${expense.id}-receipt`, expense, attachment: baseAttachment, supporting: false },
+      ...supporting.map((attachment) => ({ id: `${expense.id}-${attachment.id}`, expense, attachment, supporting: true })),
+    ];
+  });
+  const receiptPages = Array.from(
+    { length: Math.ceil(receiptItems.length / RECEIPTS_PER_PAGE) },
+    (_, index) => receiptItems.slice(index * RECEIPTS_PER_PAGE, (index + 1) * RECEIPTS_PER_PAGE),
+  );
   const addFuelEvidence = async () => {
     if (!project.projectDirectory) return;
     const attachment = await importAttachment(project.projectDirectory);
@@ -503,37 +526,45 @@ function ReceiptBookView({ project, updateProject }: { project: ProjectData; upd
       return { ...current, categoryEvidence: existing ? current.categoryEvidence.map((item) => item.id === existing.id ? { ...item, attachments: [...item.attachments, { ...attachment, kind: "other" }] } : item) : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport", kind: "fuel-calculation", title: "교통비 공통 주유비 산정 증빙", attachments: [{ ...attachment, kind: "other" }] }] };
     });
   };
-  return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK" title="영수증철" description="공식 엑셀의 ‘영수증철’ 머리말을 기준으로, 금전출납부와 동일한 항목·날짜 순서로 출력합니다." action={<button className="button accent no-print" onClick={() => window.print()}><Printer size={18} /> 영수증철 인쇄</button>} />
-    <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>온라인</strong><span>첨부 이미지 출력</span></div><div><span className="legend offline" /><strong>오프라인</strong><span>실물 원본 부착용 빈칸</span></div><div className="manual-reminder"><AlertCircle size={16} /> 날짜·금액 노란색 표시와 금액 옆 번호는 인쇄 후 직접</div></div>
-    {project.expenses.map((expense) => {
-      const baseAttachment = expense.receiptMode === "online-printable" ? expense.attachments[0] : undefined;
-      const supporting = expense.receiptMode === "online-printable"
-        ? expense.attachments.slice(1)
-        : expense.attachments.filter((attachment) => attachment.kind !== "offline-preview");
-      return <div className="receipt-group" key={expense.id}><ReceiptSheet project={project} expense={expense} attachment={baseAttachment} />{supporting.map((attachment) => <SupportingEvidenceSheet key={attachment.id} project={project} expense={expense} attachment={attachment} />)}</div>;
-    })}
+  return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK" title="영수증철" description="A4 세로 한 장에 최대 6개를 배치하고, 왼쪽 열을 위에서 아래로 채운 뒤 오른쪽 열로 이어집니다." action={<button className="button accent no-print" onClick={() => window.print()}><Printer size={18} /> 영수증철 인쇄</button>} />
+    <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>온라인</strong><span>첨부 이미지 출력</span></div><div><span className="legend offline" /><strong>오프라인</strong><span>작은 중앙 안내 위에 실물 원본 부착</span></div><div><strong>A4 배치</strong><span>2열 × 3행 · 세로 우선</span></div><div className="manual-reminder"><AlertCircle size={16} /> 날짜·금액 노란색 표시와 금액 옆 번호는 인쇄 후 직접</div></div>
+    {receiptPages.map((items, pageIndex) => <article className="receipt-sheet receipt-grid-sheet" key={`receipt-page-${pageIndex}`}>
+      <ReceiptHeader project={project} />
+      <div className="receipt-grid">{items.map((item) => <ReceiptTile key={item.id} project={project} item={item} />)}</div>
+      <div className="receipt-page-count">{pageIndex + 1} / {receiptPages.length}</div>
+    </article>)}
     {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && <div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} /><div className="receipt-meta"><span>교통비 공통 증빙</span><strong>주유비 산정 근거</strong><em>개별 영수증 번호와 연결하지 않는 항목 공통 자료</em></div>{transportFuelEvidence?.attachments.length ? <PrintableAttachment project={project} attachment={transportFuelEvidence.attachments[0]} alt="교통비 공통 주유비 산정 증빙" /> : <div className="attachment-placeholder no-print"><Fuel size={35} /><strong>주유비 산정 증빙 1건을 추가하세요</strong><span>주유 영수증마다 붙이지 않고 교통비 전체에 한 번만 첨부합니다.</span><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><Plus size={17} /> 증빙 선택</button>{!project.projectDirectory && <small>먼저 프로젝트를 저장해 주세요.</small>}</div>}</div>}
     {project.expenses.length === 0 && <div className="panel empty-state"><ReceiptText size={40} /><strong>영수증철에 배치할 내역이 없습니다</strong><span>지출을 등록하면 순서대로 출력 페이지가 만들어집니다.</span></div>}
   </section>;
 }
 
 function ReceiptHeader({ project }: { project: ProjectData }) {
-  return <div className="official-receipt-header"><h2>{project.meta.community || "○○○"} 공동체 - 국내 {project.meta.teamName || "○○○팀"} - 영수증철</h2><p>※ 종이: A4용지 세로 · 금전출납부에 있는 순서대로 부착 · 영수증 번호는 금전출납부와 동일하게 직접 기입</p></div>;
+  return <div className="official-receipt-header"><h2>{project.meta.community || "○○○"} 공동체 - 국내 {project.meta.teamName || "○○○팀"} - 영수증철</h2><p>※ A4 세로 · 금전출납부 순서 · 각 칸 위 항목·번호 확인 · 날짜·금액 표시와 금액 옆 번호는 직접 기입</p></div>;
 }
 
-function ReceiptSheet({ project, expense, attachment }: { project: ProjectData; expense: Expense; attachment?: Attachment }) {
-  return <article className="receipt-sheet"><ReceiptHeader project={project} /><div className="receipt-meta"><span>{getCategory(expense.category).label}</span><strong>{expense.date} · {expense.content}</strong><em>금전출납부와 동일한 순서로 배치됨</em></div>
-    {expense.receiptMode === "offline-original" ? <div className="physical-placeholder"><div className="corner-guide top-left" /><div className="corner-guide top-right" /><div className="corner-guide bottom-left" /><div className="corner-guide bottom-right" /><ReceiptText size={40} /><strong>이곳에 실물 영수증 원본을 붙여 주세요</strong><span>영수증을 접지 말고 날짜와 금액이 보이도록 온전하게 부착</span><small>번호와 노란색 표시는 부착 후 직접 기입</small></div> : attachment ? <PrintableAttachment project={project} attachment={attachment} alt={`${expense.content} 온라인 영수증`} /> : <div className="physical-placeholder missing"><FileImage size={40} /><strong>온라인 영수증 이미지가 없습니다</strong><span>첨부 후 다시 인쇄해 주세요.</span></div>}
-  </article>;
-}
-
-function SupportingEvidenceSheet({ project, expense, attachment }: { project: ProjectData; expense: Expense; attachment: Attachment }) {
-  return <article className="receipt-sheet"><ReceiptHeader project={project} /><div className="receipt-meta"><span>{getCategory(expense.category).label} 추가 증빙</span><strong>{expense.date} · {expense.content}</strong><em>{attachment.originalName}</em></div><PrintableAttachment project={project} attachment={attachment} alt={`${expense.content} 추가 증빙`} /></article>;
+function ReceiptTile({ project, item }: { project: ProjectData; item: ReceiptBookItem }) {
+  const { expense, attachment, supporting } = item;
+  const category = getCategory(expense.category);
+  const receiptNumber = expense.receiptNumber ?? "?";
+  const receiptCode = `${category.number}-${receiptNumber}`;
+  return <section className={`receipt-tile ${expense.receiptMode === "offline-original" && !supporting ? "offline" : "online"}`}>
+    <header className="receipt-tile-label">
+      <span>{receiptCode}</span>
+      <div><strong>{category.label} · 영수증 {receiptNumber}번{supporting ? " · 추가 증빙" : ""}</strong><small>{expense.date} · {expense.content} · {money(expense.amount)}</small></div>
+    </header>
+    <div className="receipt-tile-body">
+      {expense.receiptMode === "offline-original" && !supporting
+        ? <div className="physical-placeholder"><ReceiptText size={20} /><strong>실물 영수증 부착</strong><small>이 안내가 가려지도록 중앙에 붙이세요</small></div>
+        : attachment
+          ? <PrintableAttachment project={project} attachment={attachment} alt={`${receiptCode} ${expense.content}${supporting ? " 추가 증빙" : " 영수증"}`} />
+          : <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>온라인 영수증 없음</strong><span>첨부 후 다시 인쇄해 주세요.</span></div>}
+    </div>
+  </section>;
 }
 
 function PrintableAttachment({ project, attachment, alt }: { project: ProjectData; attachment: Attachment; alt: string }) {
   const url = project.projectDirectory ? attachmentAssetUrl(project.projectDirectory, attachment.relativePath) : "";
-  if (!url) return <div className="physical-placeholder missing"><FileImage size={40} /><strong>첨부파일을 불러올 수 없습니다</strong></div>;
+  if (!url) return <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>첨부파일을 불러올 수 없습니다</strong></div>;
   return <div className="online-receipt">{attachment.mimeType === "application/pdf" ? <embed src={url} type="application/pdf" aria-label={alt} /> : <img src={url} alt={alt} />}</div>;
 }
 
