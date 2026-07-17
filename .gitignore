@@ -1,0 +1,14 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+artifacts/
+reference/
+*.tsbuildinfo
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+회계프로젝트.json
+attachments/

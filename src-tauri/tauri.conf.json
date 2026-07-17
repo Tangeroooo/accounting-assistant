@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "아웃리치 회계 도우미",
+  "version": "0.1.0",
+  "identifier": "org.onnuri.accounting-assistant",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "아웃리치 회계 도우미",
+        "width": 1440,
+        "height": 940,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https:; worker-src 'self' blob:; script-src 'self' 'unsafe-eval'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": ["../resources/accounting-template.xlsx"],
+    "category": "Finance",
+    "shortDescription": "회계보고서와 영수증철을 로컬에서 작성합니다."
+  }
+}
