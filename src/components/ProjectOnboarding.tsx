@@ -49,7 +49,7 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
       <div className="onboarding-aside">
         <div><span className="eyebrow">NEW PROJECT</span><h1>회계 프로젝트를<br />함께 준비해 볼게요.</h1><p>지금 입력한 내용은 나중에 언제든 수정할 수 있습니다.</p></div>
         <ol>{steps.map((item, index) => <li className={`${index === step ? "active" : ""} ${index < step ? "done" : ""}`} key={item.title}><span>{index < step ? <Check size={15} /> : index + 1}</span><div><strong>{item.title}</strong><small>{item.description}</small></div></li>)}</ol>
-        <button className="onboarding-open" onClick={onOpen}><FolderOpen size={16} /> 기존 프로젝트 열기</button>
+        <button className="onboarding-open" onClick={onOpen}><FolderOpen size={18} /><span><strong>기존 .barun 프로젝트 열기</strong><small>저장해 둔 *.barun 파일을 선택합니다</small></span></button>
       </div>
       <div className="onboarding-content">
         {step === 0 && <>

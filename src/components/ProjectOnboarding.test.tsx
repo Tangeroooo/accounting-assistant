@@ -22,6 +22,7 @@ describe("프로젝트 시작 저장 위치 단계", () => {
     };
     const { rerender } = render(<ProjectOnboarding {...commonProps} />);
 
+    expect(screen.getByRole("button", { name: /기존 \.barun 프로젝트 열기/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /다음/ }));
     fireEvent.click(screen.getByRole("button", { name: /다음/ }));
 
