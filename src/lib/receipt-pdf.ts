@@ -146,7 +146,7 @@ export async function createReceiptBookPdf(project: ProjectData) {
         width: mm(placement.widthMm),
         height: mm(placement.heightMm),
       };
-      if (item.expense.receiptMode === "offline-original" && !item.supporting) {
+      if (item.offlineHolder) {
         drawOfflinePlaceholder(context, bounds);
       } else if (item.attachment) {
         const rendered = renderedAttachments.get(item.attachment.id);
@@ -156,13 +156,13 @@ export async function createReceiptBookPdf(project: ProjectData) {
     pageCanvases.push(canvas);
   }
 
-  const fuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation")?.attachments[0];
-  if (fuelEvidence) {
+  const fuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation")?.attachments ?? [];
+  for (const attachment of fuelEvidence) {
     const canvas = createPageCanvas();
     const context = canvas.getContext("2d");
     if (!context) throw new Error("주유비 증빙 PDF 페이지를 만들 수 없습니다.");
     drawPageHeader(context, project);
-    drawPlacedImage(context, await renderAttachment(project, fuelEvidence), { x: mm(12), y: mm(25), width: mm(186), height: mm(260) }, fuelEvidence);
+    drawPlacedImage(context, await renderAttachment(project, attachment), { x: mm(12), y: mm(25), width: mm(186), height: mm(260) }, attachment);
     pageCanvases.push(canvas);
   }
 

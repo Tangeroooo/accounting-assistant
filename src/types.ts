@@ -74,6 +74,12 @@ export interface Attachment {
     | "other";
 }
 
+export interface OfflineReceiptHolder {
+  id: string;
+  widthMm: number;
+  heightMm: number;
+}
+
 export interface Expense {
   id: string;
   createdOrder: number;
@@ -85,6 +91,7 @@ export interface Expense {
   receiptMode: ReceiptMode;
   originalConfirmed: boolean;
   attachments: Attachment[];
+  offlineHolders?: OfflineReceiptHolder[];
   mealHeadcount?: number;
   itemDetails: string;
   isFuel: boolean;

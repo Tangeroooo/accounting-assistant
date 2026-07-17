@@ -83,6 +83,24 @@ describe("영수증철 페이지 구성", () => {
 
   it("일반 모드의 모서리 핸들은 비율을 유지하고 자르기 핸들은 한쪽 프레임만 바꾼다", () => {
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "se", deltaXmm: 20, deltaYmm: 5, cropMode: false })).toEqual({ widthMm: 100, heightMm: 150 });
+    expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "e", deltaXmm: 20, deltaYmm: 0, cropMode: false })).toEqual({ widthMm: 100, heightMm: 150 });
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "e", deltaXmm: -25, deltaYmm: 0, cropMode: true })).toEqual({ widthMm: 55, heightMm: 120 });
+  });
+
+  it("한 지출에 여러 실물 홀더를 만들고 각 홀더 크기로 자동 배치한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [{
+      ...expense(1),
+      offlineHolders: [
+        { id: "holder-1", widthMm: 50, heightMm: 90 },
+        { id: "holder-2", widthMm: 120, heightMm: 45 },
+      ],
+    }];
+    const items = buildReceiptBookItems(project);
+    expect(items.map((item) => item.offlineHolder?.id)).toEqual(["holder-1", "holder-2"]);
+    expect(layoutReceiptBookItems(items)[0]).toMatchObject([
+      { widthMm: 50, heightMm: 90 },
+      { widthMm: 120, heightMm: 45 },
+    ]);
   });
 });

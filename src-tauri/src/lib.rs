@@ -135,6 +135,15 @@ fn write_binary_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn delete_file_if_exists(path: String) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
 fn save_clova_config(invoke_url: String, secret: String) -> Result<(), String> {
     let credentials = ClovaCredentials {
         invoke_url: invoke_url.trim().to_string(),
@@ -223,6 +232,7 @@ pub fn run() {
             copy_attachment,
             read_binary_file,
             write_binary_file,
+            delete_file_if_exists,
             save_clova_config,
             clear_clova_config,
             clova_status,

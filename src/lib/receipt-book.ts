@@ -1,4 +1,4 @@
-import type { Attachment, Expense, ProjectData } from "../types";
+import type { Attachment, Expense, OfflineReceiptHolder, ProjectData } from "../types";
 
 export const RECEIPT_FLOW_WIDTH_MM = 190;
 export const RECEIPT_FLOW_HEIGHT_MM = 262;
@@ -18,6 +18,7 @@ export interface ReceiptBookItem {
   id: string;
   expense: Expense;
   attachment?: Attachment;
+  offlineHolder?: OfflineReceiptHolder;
   supporting: boolean;
 }
 
@@ -29,12 +30,33 @@ export interface ReceiptFlowPlacement {
   heightMm: number;
 }
 
+export const DEFAULT_OFFLINE_HOLDER = {
+  widthMm: 82,
+  heightMm: 62,
+} as const;
+
+export function offlineHoldersForExpense(expense: Expense): OfflineReceiptHolder[] {
+  return expense.offlineHolders?.length
+    ? expense.offlineHolders
+    : [{ id: `${expense.id}-offline-1`, ...DEFAULT_OFFLINE_HOLDER }];
+}
+
 export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
-  return project.expenses.flatMap((expense) => {
+  return project.expenses.flatMap<ReceiptBookItem>((expense) => {
+    if (expense.receiptMode === "offline-original") {
+      const supporting = expense.attachments.filter((attachment) => attachment.kind !== "offline-preview");
+      return [
+        ...offlineHoldersForExpense(expense).map((offlineHolder) => ({
+          id: `${expense.id}-${offlineHolder.id}`,
+          expense,
+          offlineHolder,
+          supporting: false,
+        })),
+        ...supporting.map((attachment) => ({ id: `${expense.id}-${attachment.id}`, expense, attachment, supporting: true })),
+      ];
+    }
     const baseAttachment = expense.receiptMode === "online-printable" ? expense.attachments[0] : undefined;
-    const supporting = expense.receiptMode === "online-printable"
-      ? expense.attachments.slice(1)
-      : expense.attachments.filter((attachment) => attachment.kind !== "offline-preview");
+    const supporting = expense.attachments.slice(1);
     return [
       { id: `${expense.id}-receipt`, expense, attachment: baseAttachment, supporting: false },
       ...supporting.map((attachment) => ({ id: `${expense.id}-${attachment.id}`, expense, attachment, supporting: true })),
@@ -58,10 +80,13 @@ export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaY
   const verticalDelta = handle.includes("s") ? deltaYmm : handle.includes("n") ? -deltaYmm : 0;
   let nextWidth = widthMm;
   let nextHeight = heightMm;
-  if (!cropMode && horizontalDelta !== 0 && verticalDelta !== 0) {
+  if (!cropMode) {
     const horizontalRatio = horizontalDelta / widthMm;
     const verticalRatio = verticalDelta / heightMm;
-    const scale = Math.max(0.25, 1 + (Math.abs(horizontalRatio) > Math.abs(verticalRatio) ? horizontalRatio : verticalRatio));
+    const requestedRatio = Math.abs(horizontalRatio) > Math.abs(verticalRatio) ? horizontalRatio : verticalRatio;
+    const minimumScale = Math.max(32 / widthMm, 20 / heightMm, 0.25);
+    const maximumScale = Math.min(RECEIPT_FLOW_WIDTH_MM / widthMm, RECEIPT_FLOW_HEIGHT_MM / heightMm);
+    const scale = clamp(1 + requestedRatio, minimumScale, maximumScale);
     nextWidth = widthMm * scale;
     nextHeight = heightMm * scale;
   } else {
@@ -75,8 +100,11 @@ export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaY
 }
 
 function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<string, number>) {
-  if (item.expense.receiptMode === "offline-original" && !item.supporting) {
-    return { widthMm: 82, heightMm: 62 };
+  if (item.offlineHolder) {
+    return {
+      widthMm: clamp(item.offlineHolder.widthMm, 32, RECEIPT_FLOW_WIDTH_MM),
+      heightMm: clamp(item.offlineHolder.heightMm, 20, RECEIPT_FLOW_HEIGHT_MM),
+    };
   }
   const layout = { ...DEFAULT_IMAGE_LAYOUT, ...item.attachment?.layout };
   const rawAspectRatio = item.attachment

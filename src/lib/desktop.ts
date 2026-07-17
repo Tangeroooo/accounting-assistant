@@ -58,8 +58,13 @@ async function packageBytes(project: ProjectData) {
   });
 }
 
-async function writeBytes(path: string, bytes: Uint8Array) {
+export async function writeAttachmentBytes(path: string, bytes: Uint8Array) {
   await invoke("write_binary_file", { path, bytes: Array.from(bytes) });
+}
+
+export async function deleteAttachmentFile(path: string) {
+  if (!isTauri()) return;
+  await invoke("delete_file_if_exists", { path });
 }
 
 async function prepareWorkspace(packagePath: string) {
@@ -69,7 +74,7 @@ async function prepareWorkspace(packagePath: string) {
 async function extractAssets(bytes: Uint8Array, workspaceDirectory: string) {
   const parsed = await parseBarunPackage(bytes);
   for (const [relativePath, content] of parsed.assets) {
-    await writeBytes(`${workspaceDirectory}/${relativePath}`, content);
+    await writeAttachmentBytes(`${workspaceDirectory}/${relativePath}`, content);
   }
   return parsed.project;
 }
@@ -79,7 +84,7 @@ export async function saveProjectPackage(project: ProjectData, packagePath: stri
     localStorage.setItem("accounting-assistant-project", JSON.stringify(project));
     return;
   }
-  await writeBytes(packagePath, await packageBytes(project));
+  await writeAttachmentBytes(packagePath, await packageBytes(project));
 }
 
 export async function saveProjectPackageAs(project: ProjectData, defaultName: string) {
@@ -90,7 +95,7 @@ export async function saveProjectPackageAs(project: ProjectData, defaultName: st
   });
   if (!packagePath) return null;
   const bytes = await packageBytes(project);
-  await writeBytes(packagePath, bytes);
+  await writeAttachmentBytes(packagePath, bytes);
   const workspaceDirectory = await prepareWorkspace(packagePath);
   await extractAssets(bytes, workspaceDirectory);
   return { packagePath, project: { ...project, projectDirectory: workspaceDirectory } };
@@ -138,7 +143,7 @@ export async function importClipboardAttachment(projectDirectory: string, file: 
   const extension = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
   const originalName = file.name && !file.name.startsWith("image.") ? file.name : `클립보드-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
   const relativePath = `attachments/clipboard-${crypto.randomUUID()}.${extension}`;
-  await writeBytes(`${projectDirectory}/${relativePath}`, new Uint8Array(await file.arrayBuffer()));
+  await writeAttachmentBytes(`${projectDirectory}/${relativePath}`, new Uint8Array(await file.arrayBuffer()));
   return { id: crypto.randomUUID(), relativePath, originalName, mimeType, kind: "online-receipt" };
 }
 
