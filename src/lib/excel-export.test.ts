@@ -44,8 +44,12 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     project.meta.headcount = 7;
     project.duesPerPerson = 40_000;
     project.people = [{ id: "payer-secret", name: "비공개 결제자", bankMemo: "비공개 계좌" }];
-    project.expenses = Array.from({ length: 7 }, (_, index) => makeExpense(index + 1));
-    project.incomes = [{ id: "income", type: "dues", amount: 280_000, receivedAt: "2026-07-01", memo: "" }];
+    project.expenses = Array.from({ length: 8 }, (_, index) => makeExpense(index + 1));
+    project.expenses[0].category = "teamMinistry";
+    project.incomes = [
+      { id: "income", type: "dues", amount: 280_000, receivedAt: "2026-07-01", memo: "" },
+      { id: "support", type: "teamSupport", amount: 50_000, receivedAt: "2026-07-01", memo: "" },
+    ];
 
     const outputBytes = await createAccountingWorkbook(applyDerivedState(project));
     const verificationDirectory = path.resolve(process.cwd(), "artifacts/verification");
@@ -63,6 +67,9 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     expect(ledger).toContain("SUM(D5:D11)");
     expect(ledger).not.toContain("비공개 결제자");
     expect(ledger).not.toContain("비공개 계좌");
+
+    const report = new DOMParser().parseFromString(await outputZip.file("xl/worksheets/sheet2.xml")!.async("string"), "application/xml");
+    expect(report.querySelector('c[r="E25"] v')?.textContent).toBe("40000");
 
     const workbook = await outputZip.file("xl/workbook.xml")!.async("string");
     expect(workbook).toContain("'국내-금전출납부'!$A$1:$F$52");

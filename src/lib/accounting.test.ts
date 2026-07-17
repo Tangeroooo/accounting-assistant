@@ -60,6 +60,47 @@ describe("교육자료 기반 검산", () => {
     expect(reconciliationSummary(project)).toMatchObject({ returnAmount: 50_000, difference: 20_000 });
   });
 
+  it("6. 팀별사역비 지출만 지원금 사용액으로 합산하고 남은 금액을 환입한다", () => {
+    const project = createEmptyProject();
+    project.meta.headcount = 1;
+    project.duesPerPerson = 20_000;
+    project.incomes = [{ id: "support", type: "teamSupport", amount: 100_000, receivedAt: "", memo: "" }];
+    project.expenses = [
+      expense({ id: "supported", category: "teamMinistry", amount: 60_000 }),
+      expense({ id: "ordinary", category: "ministry", amount: 20_000 }),
+    ];
+
+    expect(reconciliationSummary(project)).toMatchObject({
+      teamMinistryAmount: 60_000,
+      returnAmount: 40_000,
+      difference: 0,
+    });
+  });
+
+  it("팀별사역비가 지원금을 넘으면 회비 충당 여부를 검토하도록 알린다", () => {
+    const project = createEmptyProject();
+    project.incomes = [{ id: "support", type: "teamSupport", amount: 50_000, receivedAt: "", memo: "" }];
+    project.expenses = [expense({ category: "teamMinistry", amount: 70_000 })];
+
+    expect(reconciliationSummary(project).returnAmount).toBe(0);
+    expect(validateProject(project)).toContainEqual(expect.objectContaining({
+      id: "team-ministry-over-support",
+      severity: "warning",
+    }));
+  });
+
+  it("잘못된 마킹 방식으로 저장된 임시 프로젝트는 6. 팀별사역비로 옮긴다", () => {
+    const project = createEmptyProject();
+    project.expenses = [{
+      ...expense({ category: "ministry" }),
+      teamSupportApplied: true,
+    } as Expense];
+
+    const [migrated] = applyDerivedState(project).expenses;
+    expect(migrated.category).toBe("teamMinistry");
+    expect("teamSupportApplied" in migrated).toBe(false);
+  });
+
   it("지출 입력 중 새 결제자 이름을 바로 등록하고 같은 이름은 재사용한다", () => {
     const first = assignPayerFromExpense([], expense({ paymentSource: "personal", amount: 25_000 }), " 김회계 ");
     expect(first.people).toHaveLength(1);

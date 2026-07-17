@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import templateUrl from "../../resources/accounting-template.xlsx?url";
 import { CATEGORY_DEFINITIONS, getCategory, type Expense, type ProjectData } from "../types";
-import { applyDerivedState } from "./accounting";
+import { applyDerivedState, teamMinistryExpenseTotal } from "./accounting";
 
 const NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
@@ -151,7 +151,7 @@ function updateAccountingReport(document: XmlDocument, project: ProjectData) {
   ) as Record<(typeof CATEGORY_DEFINITIONS)[number]["id"], number>;
   const totalIncome = income.dues + income.teamSupport + income.flowing;
   const totalExpense = Object.values(categoryTotals).reduce((sum, value) => sum + value, 0);
-  const returnAmount = Math.max(income.teamSupport - categoryTotals.teamMinistry, 0);
+  const returnAmount = Math.max(income.teamSupport - teamMinistryExpenseTotal(project.expenses), 0);
 
   updateTextCell(document, "D4", `이름 : ${project.meta.accountantName}`);
   updateTextCell(document, "E4", `이름 : ${project.meta.pastorName}`);

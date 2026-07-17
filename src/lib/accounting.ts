@@ -59,6 +59,12 @@ export function expenseTotals(expenses: Expense[]) {
   return { byCategory, total };
 }
 
+export function teamMinistryExpenseTotal(expenses: Expense[]) {
+  return expenses
+    .filter((expense) => expense.category === "teamMinistry")
+    .reduce((sum, expense) => sum + Math.max(0, expense.amount), 0);
+}
+
 export function incomeTotals(project: ProjectData) {
   const storedDues = project.incomes
     .filter((income) => income.type === "dues")
@@ -78,9 +84,10 @@ export function incomeTotals(project: ProjectData) {
 export function reconciliationSummary(project: ProjectData) {
   const income = incomeTotals(project);
   const expense = expenseTotals(project.expenses);
-  const returnAmount = Math.max(income.teamSupport - expense.byCategory.teamMinistry, 0);
+  const teamMinistryAmount = teamMinistryExpenseTotal(project.expenses);
+  const returnAmount = Math.max(income.teamSupport - teamMinistryAmount, 0);
   const difference = income.total - expense.total - returnAmount;
-  return { income, expense, returnAmount, difference };
+  return { income, expense, teamMinistryAmount, returnAmount, difference };
 }
 
 export function settlementSummaries(project: ProjectData): SettlementSummary[] {
@@ -118,7 +125,19 @@ const hasAttachment = (expense: Expense, kinds: Expense["attachments"][number]["
 export function validateProject(project: ProjectData): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const expenses = sortAndNumberExpenses(project.expenses);
-  const { difference: reconciledDifference } = reconciliationSummary({ ...project, expenses });
+  const reconciliation = reconciliationSummary({ ...project, expenses });
+  const { difference: reconciledDifference } = reconciliation;
+
+  if (reconciliation.teamMinistryAmount > reconciliation.income.teamSupport) {
+    const excess = reconciliation.teamMinistryAmount - reconciliation.income.teamSupport;
+    issues.push({
+      id: "team-ministry-over-support",
+      severity: "warning",
+      scope: "project",
+      title: "팀별사역비가 지원금을 초과합니다",
+      detail: `6. 팀별사역비 지출이 실제 팀별사역지원금보다 ${excess.toLocaleString("ko-KR")}원 많습니다. 초과분은 회비에서 충당되는지 확인해 주세요.`,
+    });
+  }
 
   if (reconciledDifference !== 0) {
     issues.push({
@@ -246,7 +265,14 @@ export function applyDerivedState(project: ProjectData): ProjectData {
     : duesAmount > 0
       ? [...project.incomes, { id: crypto.randomUUID(), type: "dues" as const, amount: duesAmount, receivedAt: "", memo: "팀 회비" }]
       : project.incomes;
-  const expenses = sortAndNumberExpenses(project.expenses).map((expense) => {
+  const migratedExpenses = project.expenses.map((expense) => {
+    const legacy = expense as Expense & { teamSupportApplied?: boolean };
+    const { teamSupportApplied, ...cleanExpense } = legacy;
+    return teamSupportApplied === true
+      ? { ...cleanExpense, category: "teamMinistry" as const }
+      : cleanExpense;
+  });
+  const expenses = sortAndNumberExpenses(migratedExpenses).map((expense) => {
     if (expense.paymentSource === "team") {
       return {
         ...expense,
