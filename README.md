@@ -13,12 +13,15 @@
 - 교통비의 주유비 계산 증빙은 지출별 짝이 아니라 교통 카테고리 공통 증빙 한 부로 관리합니다.
 - CLOVA OCR API URL/Secret이 있으면 우선 사용하고, 없거나 실패하면 앱에 포함된 한국어 Tesseract OCR로 전환합니다.
 - 내보내기 전에 예산, 합계, 증빙, 정산 잔액을 검사합니다.
+- 새 프로젝트는 기본정보 → 수입 → 저장 폴더 순서로 안내하며, 폴더 선택 후 변경사항을 자동 저장합니다.
+- 개인 선결제자는 설정에서 미리 만들지 않고 지출 입력 중 이름을 적으면 자동 등록됩니다.
+- 진행 현황에서 지출 입력 → 누락 검토 → Excel·영수증철 산출물 생성 순서를 안내합니다.
 
 ## 로컬 개발
 
 ```bash
 npm install
-npm run dev
+npm run tauri -- dev
 npm test
 npm run build
 cargo check --manifest-path src-tauri/Cargo.toml

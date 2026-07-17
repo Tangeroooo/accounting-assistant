@@ -2,10 +2,28 @@ import {
   CATEGORY_DEFINITIONS,
   type CategoryId,
   type Expense,
+  type Person,
   type ProjectData,
   type SettlementSummary,
   type ValidationIssue,
 } from "../types";
+
+export function assignPayerFromExpense(people: Person[], expense: Expense, payerName?: string) {
+  const normalizedName = payerName?.trim();
+  if (expense.paymentSource !== "personal" || !normalizedName) return { people, expense };
+  const existing = people.find(
+    (person) => person.name.trim().toLocaleLowerCase("ko-KR") === normalizedName.toLocaleLowerCase("ko-KR"),
+  );
+  const payerId = existing?.id ?? crypto.randomUUID();
+  return {
+    people: existing ? people : [...people, { id: payerId, name: normalizedName, bankMemo: "" }],
+    expense: {
+      ...expense,
+      payerId,
+      settlementTargetAmount: expense.settlementTargetAmount || expense.amount,
+    },
+  };
+}
 
 const categoryOrder = new Map<CategoryId, number>(
   CATEGORY_DEFINITIONS.map((category, index) => [category.id, index]),

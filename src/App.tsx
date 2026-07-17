@@ -27,7 +27,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CATEGORY_DEFINITIONS,
@@ -41,6 +41,7 @@ import {
 } from "./types";
 import {
   applyDerivedState,
+  assignPayerFromExpense,
   expenseTotals,
   incomeTotals,
   settlementSummaries,
@@ -62,16 +63,17 @@ import {
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
 import { recognizeReceipt, type OcrSuggestion } from "./lib/ocr";
+import ProjectOnboarding from "./components/ProjectOnboarding";
 
 type ViewId = "overview" | "expenses" | "receipts" | "settlements" | "export" | "settings";
 
 const navItems: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: "overview", label: "대시보드", icon: LayoutDashboard },
-  { id: "expenses", label: "지출 내역", icon: WalletCards },
-  { id: "receipts", label: "영수증철", icon: ReceiptText },
-  { id: "settlements", label: "개인 정산", icon: Users },
-  { id: "export", label: "검산·내보내기", icon: FileCheck2 },
-  { id: "settings", label: "설정", icon: Settings },
+  { id: "overview", label: "진행 현황", icon: LayoutDashboard },
+  { id: "expenses", label: "1. 지출 입력", icon: WalletCards },
+  { id: "receipts", label: "2. 영수증 준비", icon: ReceiptText },
+  { id: "settlements", label: "3. 정산 확인", icon: Users },
+  { id: "export", label: "4. 검토·산출물", icon: FileCheck2 },
+  { id: "settings", label: "프로젝트 설정", icon: Settings },
 ];
 
 const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
@@ -142,14 +144,31 @@ function App() {
     }
     return isTauri() ? createEmptyProject() : sampleProject();
   });
+  const persistedSnapshotRef = useRef(JSON.stringify(project));
   const [view, setView] = useState<ViewId>("overview");
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [toast, setToast] = useState<string | null>(null);
   const [clovaStatus, setClovaStatus] = useState<ClovaStatus>({ configured: false });
+  const [showOnboarding, setShowOnboarding] = useState(
+    isTauri() && !project.projectDirectory && !project.meta.teamName && project.expenses.length === 0,
+  );
 
   useEffect(() => {
-    localStorage.setItem("accounting-assistant-project", JSON.stringify(project));
+    const serialized = JSON.stringify(project);
+    localStorage.setItem("accounting-assistant-project", serialized);
+    if (!project.projectDirectory || serialized === persistedSnapshotRef.current) return;
+    setSaveState("saving");
+    const timer = window.setTimeout(async () => {
+      try {
+        await saveProjectFile(project.projectDirectory!, JSON.stringify(project, null, 2));
+        persistedSnapshotRef.current = serialized;
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }, 700);
+    return () => window.clearTimeout(timer);
   }, [project]);
 
   useEffect(() => {
@@ -172,6 +191,14 @@ function App() {
     setSaveState("idle");
   };
 
+  const handleChooseDirectory = async () => {
+    if (!isTauri()) return true;
+    const projectDirectory = await chooseProjectDirectory();
+    if (!projectDirectory) return false;
+    updateProject((current) => ({ ...current, projectDirectory }));
+    return true;
+  };
+
   const handleSave = async () => {
     let projectDirectory = project.projectDirectory;
     if (!projectDirectory) {
@@ -185,7 +212,9 @@ function App() {
     setSaveState("saving");
     try {
       const next = applyDerivedState({ ...project, projectDirectory });
+      const serialized = JSON.stringify(next);
       await saveProjectFile(projectDirectory, JSON.stringify(next, null, 2));
+      persistedSnapshotRef.current = serialized;
       setProject(next);
       setSaveState("saved");
       setToast("프로젝트를 안전하게 저장했습니다.");
@@ -200,7 +229,12 @@ function App() {
     if (!path) return;
     try {
       const opened = JSON.parse(await loadProjectFile(path)) as ProjectData;
-      setProject(applyDerivedState(opened));
+      const next = applyDerivedState(opened);
+      persistedSnapshotRef.current = JSON.stringify(next);
+      setProject(next);
+      setShowOnboarding(false);
+      setView("overview");
+      setSaveState("saved");
       setToast("프로젝트를 열었습니다.");
     } catch (error) {
       setToast(error instanceof Error ? error.message : "프로젝트를 열지 못했습니다.");
@@ -209,11 +243,35 @@ function App() {
 
   const handleNew = () => {
     if (project.expenses.length > 0 && !window.confirm("현재 화면의 저장되지 않은 내용을 닫고 새 프로젝트를 시작할까요?")) return;
-    setProject(createEmptyProject());
-    setView("settings");
+    const next = createEmptyProject();
+    persistedSnapshotRef.current = JSON.stringify(next);
+    setProject(next);
+    setView("overview");
+    setShowOnboarding(true);
     setSaveState("idle");
-    setToast("새 프로젝트를 시작했습니다. 기본 정보를 입력해 주세요.");
   };
+
+  const handleFinishOnboarding = async () => {
+    if (isTauri() && !project.projectDirectory) return;
+    if (project.projectDirectory) {
+      try {
+        setSaveState("saving");
+        const serialized = JSON.stringify(project);
+        await saveProjectFile(project.projectDirectory, JSON.stringify(project, null, 2));
+        persistedSnapshotRef.current = serialized;
+        setSaveState("saved");
+      } catch (error) {
+        setSaveState("error");
+        setToast(error instanceof Error ? error.message : "프로젝트를 저장하지 못했습니다.");
+        return;
+      }
+    }
+    setShowOnboarding(false);
+    setView("overview");
+    setToast("프로젝트가 준비됐습니다. 첫 지출을 등록해 보세요.");
+  };
+
+  if (showOnboarding) return <ProjectOnboarding project={project} requiresDirectory={isTauri()} updateProject={updateProject} onChooseDirectory={handleChooseDirectory} onFinish={handleFinishOnboarding} onOpen={handleOpen} />;
 
   return (
     <div className="app-shell">
@@ -240,8 +298,8 @@ function App() {
         </nav>
         <div className="sidebar-guide">
           <Sparkles size={18} />
-          <strong>제출 전 기억하기</strong>
-          <p>노란색 표시와 금액 옆 영수증 번호는 출력 후 직접 기입합니다.</p>
+          <strong>{project.expenses.length === 0 ? "첫 단계: 지출 입력" : issues.length ? `확인할 항목 ${issues.length}개` : "산출물 준비 완료"}</strong>
+          <p>{project.expenses.length === 0 ? "첫 영수증을 보면서 날짜·내용·금액부터 등록해 보세요." : issues.length ? "검토·산출물에서 누락된 정보를 순서대로 확인하세요." : "Excel과 영수증철을 만들 수 있습니다."}</p>
         </div>
         <div className="sidebar-footer">
           <span className={`status-dot ${clovaStatus.configured ? "online" : "fallback"}`} />
@@ -257,7 +315,7 @@ function App() {
             <button className="button ghost" onClick={handleOpen}><FolderOpen size={17} /> 열기</button>
             <button className="button primary" onClick={handleSave} disabled={saveState === "saving"}>
               {saveState === "saving" ? <LoaderCircle className="spin" size={17} /> : saveState === "saved" ? <Check size={17} /> : <Save size={17} />}
-              {saveState === "saving" ? "저장 중" : saveState === "saved" ? "저장됨" : "저장"}
+              {!project.projectDirectory ? "저장 폴더 선택" : saveState === "saving" ? "자동 저장 중" : saveState === "saved" ? "자동 저장됨" : saveState === "error" ? "저장 다시 시도" : "지금 저장"}
             </button>
           </div>
         </header>
@@ -270,7 +328,7 @@ function App() {
         )}
         {view === "receipts" && <ReceiptBookView project={project} updateProject={updateProject} />}
         {view === "settlements" && <SettlementView project={project} summaries={settlements} updateProject={updateProject} />}
-        {view === "export" && <ExportView project={project} issues={issues} incomes={incomes} totals={totals} onToast={setToast} />}
+        {view === "export" && <ExportView project={project} issues={issues} incomes={incomes} totals={totals} onToast={setToast} onPrintReceiptBook={() => { setView("receipts"); window.setTimeout(() => window.print(), 180); }} />}
         {view === "settings" && (
           <SettingsView project={project} updateProject={updateProject} clovaStatus={clovaStatus} setClovaStatus={setClovaStatus} onToast={setToast} />
         )}
@@ -281,15 +339,19 @@ function App() {
           project={project}
           expense={editingExpense}
           onClose={() => setEditingExpense(null)}
-          onSave={(expense) => {
-            updateProject((current) => ({
-              ...current,
-              expenses: current.expenses.some((item) => item.id === expense.id)
-                ? current.expenses.map((item) => item.id === expense.id ? expense : item)
-                : [...current.expenses, expense],
-            }));
+          onSave={(expense, payerName) => {
+            updateProject((current) => {
+              const assigned = assignPayerFromExpense(current.people, expense, payerName);
+              return {
+                ...current,
+                people: assigned.people,
+                expenses: current.expenses.some((item) => item.id === assigned.expense.id)
+                  ? current.expenses.map((item) => item.id === assigned.expense.id ? assigned.expense : item)
+                  : [...current.expenses, assigned.expense],
+              };
+            });
             setEditingExpense(null);
-            setToast("지출 내역을 반영했습니다.");
+            setToast("지출 내역을 반영했습니다. 프로젝트에 자동 저장됩니다.");
           }}
         />
       )}
@@ -308,11 +370,27 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
 }) {
   const difference = incomes.total - totals.total;
   const completion = Math.max(8, Math.min(100, 100 - issues.filter((issue) => issue.severity === "error").length * 14 - issues.filter((issue) => issue.severity === "warning").length * 5));
+  const setupReady = Boolean(project.meta.community && project.meta.teamName && (!isTauri() || project.projectDirectory));
+  const expensesReady = project.expenses.length > 0;
+  const reviewReady = expensesReady && !issues.some((issue) => issue.severity === "error");
+  const workflowSteps: { number: number; title: string; description: string; done: boolean; current: boolean; action: string; view: ViewId }[] = [
+    { number: 1, title: "프로젝트 준비", description: setupReady ? "기본정보와 저장 폴더가 준비됐어요." : "팀 정보와 저장 폴더를 먼저 확인하세요.", done: setupReady, current: !setupReady, action: "기본정보", view: "settings" },
+    { number: 2, title: "지출 입력", description: expensesReady ? `${project.expenses.length}건을 날짜순으로 정리했어요.` : "영수증을 보며 첫 지출을 등록하세요.", done: expensesReady, current: setupReady && !expensesReady, action: "지출 입력", view: "expenses" },
+    { number: 3, title: "누락 검토", description: reviewReady ? "필수 검사를 모두 통과했어요." : expensesReady ? `${issues.length}개 항목을 확인해 주세요.` : "지출을 입력하면 자동으로 검사합니다.", done: reviewReady, current: expensesReady && !reviewReady, action: "검토하기", view: "export" },
+    { number: 4, title: "산출물 만들기", description: reviewReady ? "Excel과 영수증철을 만들 수 있어요." : "검사를 통과하면 활성화됩니다.", done: false, current: reviewReady, action: "산출물", view: "export" },
+  ];
   return (
     <section className="page page-overview">
       <div className="hero-row">
         <div><span className="eyebrow">ACCOUNTING WORKSPACE</span><h1>{project.meta.teamName || "회계 프로젝트"}, 오늘도 차근차근.</h1><p>입력한 내역은 항목별·날짜순으로 정리되고 영수증 번호가 자동으로 맞춰집니다.</p></div>
         <button className="button accent" onClick={() => setEditingExpense(newExpense(project))}><Plus size={18} /> 지출 등록</button>
+      </div>
+      <div className="workflow-strip">
+        {workflowSteps.map((step) => <button key={step.number} className={`${step.done ? "done" : ""} ${step.current ? "current" : ""}`} onClick={() => step.number === 2 && !expensesReady ? setEditingExpense(newExpense(project)) : setView(step.view)}>
+          <span className="workflow-number">{step.done ? <Check size={16} /> : step.number}</span>
+          <span className="workflow-copy"><strong>{step.title}</strong><small>{step.description}</small></span>
+          <ArrowRight size={15} />
+        </button>)}
       </div>
       <div className="metric-grid">
         <Metric icon={CircleDollarSign} tone="navy" label="총수입" value={money(incomes.total)} sub="회비·팀별사역비·플로잉" />
@@ -416,7 +494,7 @@ function SettlementView({ project, summaries, updateProject }: { project: Projec
   </section>;
 }
 
-function ExportView({ project, issues, incomes, totals, onToast }: { project: ProjectData; issues: ReturnType<typeof validateProject>; incomes: ReturnType<typeof incomeTotals>; totals: ReturnType<typeof expenseTotals>; onToast: (message: string) => void }) {
+function ExportView({ project, issues, incomes, totals, onToast, onPrintReceiptBook }: { project: ProjectData; issues: ReturnType<typeof validateProject>; incomes: ReturnType<typeof incomeTotals>; totals: ReturnType<typeof expenseTotals>; onToast: (message: string) => void; onPrintReceiptBook: () => void }) {
   const [exporting, setExporting] = useState(false);
   const handleExport = async () => {
     setExporting(true);
@@ -430,10 +508,10 @@ function ExportView({ project, issues, incomes, totals, onToast }: { project: Pr
     } finally { setExporting(false); }
   };
   const difference = incomes.total - totals.total;
-  return <section className="page"><PageHeading eyebrow="VALIDATE & EXPORT" title="검산·내보내기" description="공식 양식을 바꾸지 않고 복사본을 만든 뒤, 금전출납부 입력 구간에만 내역과 필요한 추가 행을 반영합니다." />
+  return <section className="page"><PageHeading eyebrow="FINAL REVIEW & OUTPUTS" title="검토·산출물" description="왼쪽의 확인 항목을 해결한 뒤 회계보고서와 영수증철을 이 화면에서 차례로 만듭니다." />
     <div className="reconcile-card"><div><span>총수입</span><strong>{money(incomes.total)}</strong></div><i>−</i><div><span>총지출</span><strong>{money(totals.total)}</strong></div><i>=</i><div className={difference === 0 ? "balanced" : "unbalanced"}><span>검산 차액</span><strong>{money(difference)}</strong></div><div className={`balance-status ${difference === 0 ? "ok" : "warn"}`}>{difference === 0 ? <Check size={18} /> : <AlertCircle size={18} />}{difference === 0 ? "일치" : "확인 필요"}</div></div>
     <div className="export-grid"><div className="panel validation-panel"><div className="panel-heading"><div><span className="eyebrow">AUTOMATIC CHECKS</span><h2>자동 검사 결과</h2></div><div className="severity-summary"><span className="error">오류 {issues.filter((item) => item.severity === "error").length}</span><span className="warning">주의 {issues.filter((item) => item.severity === "warning").length}</span></div></div><div className="issue-list large">{issues.map((issue) => <div className="issue-item" key={issue.id}><span className={issue.severity}><AlertCircle size={17} /></span><div><strong>{issue.title}</strong><p>{issue.detail}</p></div></div>)}{issues.length === 0 && <div className="empty-state"><BadgeCheck size={36} /><strong>자동 검사를 모두 통과했습니다</strong><span>원본 영수증과 수기 표시를 마지막으로 확인하세요.</span></div>}</div></div>
-      <div className="panel export-panel"><div className="file-icon"><FileSpreadsheet size={34} /></div><h2>공식 회계보고서 Excel</h2><p>제공된 6개 시트, 인쇄영역, 스타일과 샘플을 그대로 둔 새 파일을 만듭니다.</p><ul><li><Check size={15} /> 항목 안 날짜순 정렬</li><li><Check size={15} /> 항목별 번호 1부터 자동 부여</li><li><Check size={15} /> 부족한 금전출납부 행만 추가</li><li><Check size={15} /> 결제자·정산 정보는 제외</li></ul><button className="button accent wide" onClick={handleExport} disabled={exporting || issues.some((issue) => issue.severity === "error")} >{exporting ? <LoaderCircle className="spin" size={18} /> : <FileSpreadsheet size={18} />}{exporting ? "복사본 생성 중" : "Excel 복사본 만들기"}</button>{issues.some((issue) => issue.severity === "error") && <small>오류를 해결하면 내보낼 수 있습니다.</small>}<div className="template-lock"><Archive size={16} /><span>원본 템플릿은 절대 덮어쓰지 않음</span></div></div>
+      <div className="output-stack"><div className="panel export-panel"><div className="file-icon"><FileSpreadsheet size={34} /></div><div className="output-step">산출물 1</div><h2>공식 회계보고서 Excel</h2><p>제공된 6개 시트와 서식을 보존한 새 파일을 만듭니다.</p><ul><li><Check size={15} /> 항목 안 날짜순 정렬</li><li><Check size={15} /> 항목별 번호 자동 부여</li><li><Check size={15} /> 결제자·정산 정보 제외</li></ul><button className="button accent wide" onClick={handleExport} disabled={exporting || issues.some((issue) => issue.severity === "error")} >{exporting ? <LoaderCircle className="spin" size={18} /> : <FileSpreadsheet size={18} />}{exporting ? "복사본 생성 중" : "Excel 복사본 만들기"}</button>{issues.some((issue) => issue.severity === "error") && <small>오류를 해결하면 만들 수 있습니다.</small>}<div className="template-lock"><Archive size={16} /><span>원본 템플릿은 절대 덮어쓰지 않음</span></div></div><div className="panel export-panel receipt-output"><div className="file-icon receipt"><ReceiptText size={32} /></div><div className="output-step">산출물 2</div><h2>영수증철</h2><p>온라인 영수증과 실물 부착용 빈칸을 번호순으로 확인합니다.</p><button className="button primary wide" onClick={onPrintReceiptBook} disabled={project.expenses.length === 0}><Printer size={18} /> 인쇄·PDF 저장</button><small className="manual-output-note">노란색 표시와 번호는 인쇄 후 직접 기입합니다.</small></div></div>
     </div>
   </section>;
 }
@@ -459,13 +537,14 @@ function SettingsView({ project, updateProject, clovaStatus, setClovaStatus, onT
     </div>
     <div className="settings-bottom-grid">
       <div className="panel income-panel"><div className="panel-heading"><div><span className="eyebrow">INCOME</span><h2>수입부</h2></div><strong>{money(incomeAmount("dues") + incomeAmount("teamSupport") + incomeAmount("flowing"))}</strong></div><p>공식 회계보고서 수입부와 총괄표에 그대로 반영됩니다.</p><div className="income-fields"><Field label="1. 회비" type="number" value={String(incomeAmount("dues") || "")} onChange={(value) => setIncomeAmount("dues", Number(value))} /><Field label="2. 팀별사역지원금" type="number" value={String(incomeAmount("teamSupport") || "")} onChange={(value) => setIncomeAmount("teamSupport", Number(value))} /><Field label="3. 재정플로잉" type="number" value={String(incomeAmount("flowing") || "")} onChange={(value) => setIncomeAmount("flowing", Number(value))} /></div></div>
-      <div className="panel people-panel"><div className="panel-heading"><div><span className="eyebrow">INTERNAL ONLY</span><h2>정산 대상자</h2></div><button className="button secondary" onClick={() => updateProject((current) => ({ ...current, people: [...current.people, { id: crypto.randomUUID(), name: "", bankMemo: "" }] }))}><Plus size={16} /> 사람 추가</button></div><p>이름과 은행 메모는 개인 정산 계산에만 사용되고 제출 파일에는 포함되지 않습니다.</p><div className="people-rows">{project.people.map((person) => <div className="person-edit-row" key={person.id}><div className="person-avatar">{person.name.slice(0, 1) || "?"}</div><input value={person.name} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, name: event.target.value } : item) }))} placeholder="이름" /><input value={person.bankMemo} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, bankMemo: event.target.value } : item) }))} placeholder="은행·계좌 메모 (선택)" /><button className="icon-button" onClick={() => updateProject((current) => ({ ...current, people: current.people.filter((item) => item.id !== person.id), expenses: current.expenses.map((expense) => expense.payerId === person.id ? { ...expense, payerId: undefined } : expense) }))}><Trash2 size={15} /></button></div>)}{project.people.length === 0 && <div className="empty-state small"><Users size={28} /><strong>등록된 정산 대상자가 없습니다</strong></div>}</div></div>
+      <div className="panel people-panel"><div className="panel-heading"><div><span className="eyebrow">OPTIONAL · INTERNAL ONLY</span><h2>정산 이름 관리</h2></div><span className="optional-badge">필요할 때만</span></div><p>지출에서 ‘개인이 먼저 결제’를 선택하고 이름을 입력하면 여기에 자동으로 추가됩니다. 이 화면에서는 이름과 계좌 메모를 고칠 수 있습니다.</p><div className="people-rows">{project.people.map((person) => <div className="person-edit-row" key={person.id}><div className="person-avatar">{person.name.slice(0, 1) || "?"}</div><input value={person.name} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, name: event.target.value } : item) }))} placeholder="이름" /><input value={person.bankMemo} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, bankMemo: event.target.value } : item) }))} placeholder="은행·계좌 메모 (선택)" /><button className="icon-button" aria-label="정산 대상자 삭제" onClick={() => updateProject((current) => ({ ...current, people: current.people.filter((item) => item.id !== person.id), expenses: current.expenses.map((expense) => expense.payerId === person.id ? { ...expense, payerId: undefined } : expense) }))}><Trash2 size={15} /></button></div>)}{project.people.length === 0 && <div className="empty-state small"><Users size={28} /><strong>아직 개인 선결제자가 없습니다</strong><span>미리 등록하지 않아도 됩니다. 지출 입력 중 이름을 바로 적어 주세요.</span></div>}</div></div>
     </div>
   </section>;
 }
 
-function ExpenseEditor({ project, expense, onClose, onSave }: { project: ProjectData; expense: Expense; onClose: () => void; onSave: (expense: Expense) => void }) {
+function ExpenseEditor({ project, expense, onClose, onSave }: { project: ProjectData; expense: Expense; onClose: () => void; onSave: (expense: Expense, payerName?: string) => void }) {
   const [draft, setDraft] = useState(expense);
+  const [payerName, setPayerName] = useState(project.people.find((person) => person.id === expense.payerId)?.name ?? "");
   const [ocr, setOcr] = useState<OcrSuggestion | null>(null);
   const [ocrProgress, setOcrProgress] = useState<number | null>(null);
   const update = <K extends keyof Expense>(key: K, value: Expense[K]) => setDraft((current) => ({ ...current, [key]: value }));
@@ -485,8 +564,8 @@ function ExpenseEditor({ project, expense, onClose, onSave }: { project: Project
       <div className="attachment-box"><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진 또는 PDF"}</strong><small>{project.projectDirectory ? "OCR로 날짜·금액·상호명을 제안합니다." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><button className="button secondary" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 선택</button></div>{draft.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><FileImage size={17} /><strong>{attachment.originalName}</strong><select value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select><button onClick={() => runOcr(attachment)} disabled={ocrProgress !== null}>{ocrProgress !== null ? `${Math.round(ocrProgress * 100)}%` : "OCR"}</button><button onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><X size={15} /></button></div>)}
       {ocr && <div className="ocr-suggestion"><div><Sparkles size={18} /><strong>{ocr.provider === "clova" ? "CLOVA" : "오픈소스"} OCR 제안</strong></div><div className="ocr-values"><button onClick={() => ocr.date && update("date", ocr.date)} disabled={!ocr.date}><span>날짜</span><strong>{ocr.date || "인식 못함"}</strong></button><button onClick={() => ocr.amount && update("amount", ocr.amount)} disabled={!ocr.amount}><span>금액</span><strong>{ocr.amount ? money(ocr.amount) : "인식 못함"}</strong></button><button onClick={() => ocr.merchant && update("content", ocr.merchant)} disabled={!ocr.merchant}><span>상호</span><strong>{ocr.merchant || "인식 못함"}</strong></button></div><small>값을 클릭하면 입력란에 반영됩니다. 반드시 영수증 원본과 대조하세요.</small></div>}
     </div>
-    <div className="editor-section internal-section"><div className="section-title"><div><span>개인 정산 <em>앱 내부 전용</em></span><small>이 정보는 공식 Excel과 영수증철에 포함되지 않습니다.</small></div></div><div className="choice-cards payment"><button className={draft.paymentSource === "team" ? "selected" : ""} onClick={() => update("paymentSource", "team")}><WalletCards size={20} /><strong>팀비 결제</strong></button><button className={draft.paymentSource === "personal" ? "selected" : ""} onClick={() => update("paymentSource", "personal")}><Users size={20} /><strong>개인 선결제</strong></button></div>{draft.paymentSource === "personal" && <div className="field-grid"><label className="field"><span>결제자</span><select value={draft.payerId || ""} onChange={(event) => update("payerId", event.target.value)}><option value="">선택</option>{project.people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select></label><Field label="정산 대상액" type="number" value={String(draft.settlementTargetAmount || draft.amount || "")} onChange={(value) => update("settlementTargetAmount", Number(value))} /><Field label="정산 완료액" type="number" value={String(draft.settledAmount || "")} onChange={(value) => update("settledAmount", Number(value))} /></div>}</div>
-  </div><div className="drawer-footer"><button className="button ghost" onClick={onClose}>취소</button><button className="button accent" onClick={() => onSave(draft)} disabled={!draft.date || !draft.content.trim() || draft.amount <= 0}><Check size={17} /> 내역 반영</button></div></div></div>;
+    <div className="editor-section internal-section"><div className="section-title"><div><span>누가 결제했나요? <em>앱 내부 전용</em></span><small>기본은 팀비입니다. 팀원이 먼저 냈을 때만 이름을 입력하세요.</small></div></div><div className="choice-cards payment"><button className={draft.paymentSource === "team" ? "selected" : ""} onClick={() => update("paymentSource", "team")}><WalletCards size={20} /><span><strong>팀비로 결제</strong><small>별도 정산 없음</small></span></button><button className={draft.paymentSource === "personal" ? "selected" : ""} onClick={() => update("paymentSource", "personal")}><Users size={20} /><span><strong>개인이 먼저 결제</strong><small>나중에 돌려줄 금액</small></span></button></div>{draft.paymentSource === "personal" && <div className="payer-inline"><label className="field"><span>먼저 결제한 사람</span><input list="known-payers" value={payerName} onChange={(event) => { const name = event.target.value; setPayerName(name); const existing = project.people.find((person) => person.name === name); update("payerId", existing?.id); }} placeholder="이름을 바로 입력하세요" /><datalist id="known-payers">{project.people.filter((person) => person.name.trim()).map((person) => <option value={person.name} key={person.id} />)}</datalist><small>{project.people.some((person) => person.name === payerName) ? "기존 정산 대상자를 선택했습니다." : payerName.trim() ? "새 이름은 내역 반영 시 자동 등록됩니다." : "설정에서 미리 추가할 필요가 없습니다."}</small></label><div className="field-grid settlement-fields"><Field label="돌려줄 금액" type="number" value={String(draft.settlementTargetAmount || draft.amount || "")} onChange={(value) => update("settlementTargetAmount", Number(value))} /><Field label="이미 돌려준 금액" type="number" value={String(draft.settledAmount || "")} onChange={(value) => update("settledAmount", Number(value))} /></div></div>}<div className="internal-caption"><BadgeCheck size={15} /> 이름과 정산 정보는 공식 Excel과 영수증철에 표시되지 않습니다.</div></div>
+  </div><div className="drawer-footer"><button className="button ghost" onClick={onClose}>취소</button><button className="button accent" onClick={() => onSave(draft, payerName)} disabled={!draft.date || !draft.content.trim() || draft.amount <= 0 || (draft.paymentSource === "personal" && !payerName.trim())}><Check size={17} /> 내역 반영</button></div></div></div>;
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) { return <div className="page-heading"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>; }

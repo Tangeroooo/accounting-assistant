@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDerivedState, settlementSummaries, sortAndNumberExpenses, validateProject } from "./accounting";
+import { applyDerivedState, assignPayerFromExpense, settlementSummaries, sortAndNumberExpenses, validateProject } from "./accounting";
 import { createEmptyProject, type Expense } from "../types";
 
 const expense = (partial: Partial<Expense>): Expense => ({
@@ -49,6 +49,17 @@ describe("금전출납부 정렬과 번호", () => {
   });
 });
 describe("교육자료 기반 검산", () => {
+  it("지출 입력 중 새 결제자 이름을 바로 등록하고 같은 이름은 재사용한다", () => {
+    const first = assignPayerFromExpense([], expense({ paymentSource: "personal", amount: 25_000 }), " 김회계 ");
+    expect(first.people).toHaveLength(1);
+    expect(first.people[0].name).toBe("김회계");
+    expect(first.expense).toMatchObject({ payerId: first.people[0].id, settlementTargetAmount: 25_000 });
+
+    const second = assignPayerFromExpense(first.people, expense({ paymentSource: "personal" }), "김회계");
+    expect(second.people).toHaveLength(1);
+    expect(second.expense.payerId).toBe(first.people[0].id);
+  });
+
   it("주유비가 있으면 개별 짝이 아닌 교통비 공통 증빙 1건을 요구한다", () => {
     const project = createEmptyProject();
     project.expenses = [expense({ isFuel: true })];
