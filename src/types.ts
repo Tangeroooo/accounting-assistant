@@ -51,6 +51,8 @@ export interface Attachment {
   originalName: string;
   mimeType: string;
   layout?: {
+    widthMm?: number;
+    aspectRatio?: number;
     scale: number;
     offsetX: number;
     offsetY: number;

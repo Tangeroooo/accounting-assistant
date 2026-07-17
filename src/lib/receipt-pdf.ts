@@ -4,7 +4,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 import type { Attachment, ProjectData } from "../types";
 import { attachmentAbsolutePath, readAttachmentBytes } from "./desktop";
-import { buildReceiptBookItems, DEFAULT_IMAGE_LAYOUT, paginateReceiptItems, receiptGridPosition } from "./receipt-book";
+import { buildReceiptBookItems, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems } from "./receipt-book";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -86,7 +86,11 @@ function drawPlacedImage(
   attachment: Attachment,
 ) {
   const layout = { ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout };
-  const baseScale = Math.min(bounds.width / source.width, bounds.height / source.height);
+  const normalizedRotation = ((layout.rotation % 360) + 360) % 360;
+  const rotated = normalizedRotation === 90 || normalizedRotation === 270;
+  const fittedWidth = rotated ? source.height : source.width;
+  const fittedHeight = rotated ? source.width : source.height;
+  const baseScale = Math.min(bounds.width / fittedWidth, bounds.height / fittedHeight);
   const width = source.width * baseScale * layout.scale;
   const height = source.height * baseScale * layout.scale;
   const centerX = bounds.x + bounds.width / 2 + bounds.width * layout.offsetX / 100;
@@ -113,30 +117,37 @@ function drawOfflinePlaceholder(context: CanvasRenderingContext2D, bounds: { x: 
 }
 
 export async function createReceiptBookPdf(project: ProjectData) {
-  const pages = paginateReceiptItems(buildReceiptBookItems(project));
+  const items = buildReceiptBookItems(project);
+  const renderedAttachments = new Map<string, HTMLCanvasElement>();
+  const measuredAspectRatios = new Map<string, number>();
+  for (const item of items) {
+    if (!item.attachment || renderedAttachments.has(item.attachment.id)) continue;
+    const rendered = await renderAttachment(project, item.attachment);
+    renderedAttachments.set(item.attachment.id, rendered);
+    measuredAspectRatios.set(item.attachment.id, rendered.width / rendered.height);
+  }
+  const pages = layoutReceiptBookItems(items, measuredAspectRatios);
   if (pages.length === 0) throw new Error("PDF로 저장할 영수증이 없습니다.");
   const pageCanvases: HTMLCanvasElement[] = [];
-  const grid = { left: 10, top: 25, width: 190, height: 262, columnGap: 4, rowGap: 4 };
-  const cellWidth = (grid.width - grid.columnGap) / 2;
-  const cellHeight = (grid.height - grid.rowGap * 2) / 3;
 
-  for (const items of pages) {
+  for (const placements of pages) {
     const canvas = createPageCanvas();
     const context = canvas.getContext("2d");
     if (!context) throw new Error("영수증철 PDF 페이지를 만들 수 없습니다.");
     drawPageHeader(context, project);
-    for (const [index, item] of items.entries()) {
-      const { column, row } = receiptGridPosition(index);
+    for (const placement of placements) {
+      const { item } = placement;
       const bounds = {
-        x: mm(grid.left + column * (cellWidth + grid.columnGap)),
-        y: mm(grid.top + row * (cellHeight + grid.rowGap)),
-        width: mm(cellWidth),
-        height: mm(cellHeight),
+        x: mm(10 + placement.xMm),
+        y: mm(25 + placement.yMm),
+        width: mm(placement.widthMm),
+        height: mm(placement.heightMm),
       };
       if (item.expense.receiptMode === "offline-original" && !item.supporting) {
         drawOfflinePlaceholder(context, bounds);
       } else if (item.attachment) {
-        drawPlacedImage(context, await renderAttachment(project, item.attachment), bounds, item.attachment);
+        const rendered = renderedAttachments.get(item.attachment.id);
+        if (rendered) drawPlacedImage(context, rendered, bounds, item.attachment);
       }
     }
     pageCanvases.push(canvas);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, paginateReceiptItems, receiptGridPosition } from "./receipt-book";
+import { buildReceiptBookItems, layoutReceiptBookItems } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -24,24 +24,43 @@ const expense = (index: number): Expense => ({
 });
 
 describe("영수증철 페이지 구성", () => {
-  it("금전출납부 순서의 영수증을 여섯 개씩 페이지로 나눈다", () => {
+  it("가변 크기 영수증을 금전출납부 순서대로 배치하고 A4 높이를 넘으면 다음 페이지로 보낸다", () => {
     const project = createEmptyProject();
-    project.expenses = Array.from({ length: 8 }, (_, index) => expense(index + 1));
-    const pages = paginateReceiptItems(buildReceiptBookItems(project));
-    expect(pages.map((page) => page.map((item) => item.expense.id))).toEqual([
-      ["expense-1", "expense-2", "expense-3", "expense-4", "expense-5", "expense-6"],
-      ["expense-7", "expense-8"],
+    project.expenses = Array.from({ length: 10 }, (_, index) => expense(index + 1));
+    const pages = layoutReceiptBookItems(buildReceiptBookItems(project));
+    expect(pages.map((page) => page.map((placement) => placement.item.expense.id))).toEqual([
+      ["expense-1", "expense-2", "expense-3", "expense-4", "expense-5", "expense-6", "expense-7", "expense-8"],
+      ["expense-9", "expense-10"],
     ]);
   });
 
-  it("왼쪽 위에서 아래로 채운 뒤 오른쪽 열로 이동한다", () => {
-    expect(Array.from({ length: 6 }, (_, index) => receiptGridPosition(index))).toEqual([
-      { column: 0, row: 0 },
-      { column: 0, row: 1 },
-      { column: 0, row: 2 },
-      { column: 1, row: 0 },
-      { column: 1, row: 1 },
-      { column: 1, row: 2 },
+  it("앞 그림의 너비를 바꾸면 뒤 그림이 워드프로세서처럼 다음 줄로 재배치된다", () => {
+    const project = createEmptyProject();
+    project.expenses = Array.from({ length: 3 }, (_, index) => ({
+      ...expense(index + 1),
+      receiptMode: "online-printable" as const,
+      attachments: [{
+        id: `attachment-${index + 1}`,
+        relativePath: `attachments/${index + 1}.png`,
+        originalName: `${index + 1}.png`,
+        mimeType: "image/png",
+        kind: "online-receipt" as const,
+        layout: { widthMm: 60, aspectRatio: 1, scale: 1, offsetX: 0, offsetY: 0, rotation: 0 },
+      }],
+    }));
+    const before = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
+    expect(before.map(({ xMm, yMm }) => ({ xMm, yMm }))).toEqual([
+      { xMm: 0, yMm: 0 },
+      { xMm: 64, yMm: 0 },
+      { xMm: 128, yMm: 0 },
+    ]);
+
+    project.expenses[0].attachments[0].layout!.widthMm = 100;
+    const after = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
+    expect(after.map(({ xMm, yMm }) => ({ xMm, yMm }))).toEqual([
+      { xMm: 0, yMm: 0 },
+      { xMm: 104, yMm: 0 },
+      { xMm: 0, yMm: 104 },
     ]);
   });
 });
