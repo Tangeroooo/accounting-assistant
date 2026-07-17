@@ -19,7 +19,7 @@ describe(".barun 프로젝트 패키지", () => {
       note: "",
       receiptMode: "online-printable",
       originalConfirmed: false,
-      attachments: [{ id: "receipt", relativePath: "attachments/receipt.png", originalName: "receipt.png", mimeType: "image/png", kind: "online-receipt", layout: { widthMm: 86, aspectRatio: 0.67, scale: 1.35, offsetX: 12, offsetY: -7, rotation: 90 } }],
+      attachments: [{ id: "receipt", relativePath: "attachments/receipt.png", originalName: "receipt.png", mimeType: "image/png", kind: "online-receipt", layout: { widthMm: 86, heightMm: 48, aspectRatio: 0.67, fit: "cover", scale: 1.35, offsetX: 12, offsetY: -7, rotation: 90 } }],
       itemDetails: "",
       isFuel: false,
       paymentSource: "team",
@@ -37,7 +37,7 @@ describe(".barun 프로젝트 패키지", () => {
 
     const parsed = await parseBarunPackage(bytes);
     expect(parsed.project.meta.teamName).toBe("강릉팀");
-    expect(parsed.project.expenses[0].attachments[0].layout).toEqual({ widthMm: 86, aspectRatio: 0.67, scale: 1.35, offsetX: 12, offsetY: -7, rotation: 90 });
+    expect(parsed.project.expenses[0].attachments[0].layout).toEqual({ widthMm: 86, heightMm: 48, aspectRatio: 0.67, fit: "cover", scale: 1.35, offsetX: 12, offsetY: -7, rotation: 90 });
     expect(parsed.assets.get("attachments/receipt.png")).toEqual(new Uint8Array([1, 2, 3]));
   });
 

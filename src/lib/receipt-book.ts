@@ -5,7 +5,9 @@ export const RECEIPT_FLOW_HEIGHT_MM = 262;
 export const RECEIPT_FLOW_GAP_MM = 4;
 export const DEFAULT_IMAGE_LAYOUT = {
   widthMm: 72,
+  heightMm: undefined as number | undefined,
   aspectRatio: 0.72,
+  fit: "contain" as const,
   scale: 1,
   offsetX: 0,
   offsetY: 0,
@@ -44,6 +46,34 @@ function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm, cropMode }: {
+  widthMm: number;
+  heightMm: number;
+  handle: string;
+  deltaXmm: number;
+  deltaYmm: number;
+  cropMode: boolean;
+}) {
+  const horizontalDelta = handle.includes("e") ? deltaXmm : handle.includes("w") ? -deltaXmm : 0;
+  const verticalDelta = handle.includes("s") ? deltaYmm : handle.includes("n") ? -deltaYmm : 0;
+  let nextWidth = widthMm;
+  let nextHeight = heightMm;
+  if (!cropMode && horizontalDelta !== 0 && verticalDelta !== 0) {
+    const horizontalRatio = horizontalDelta / widthMm;
+    const verticalRatio = verticalDelta / heightMm;
+    const scale = Math.max(0.25, 1 + (Math.abs(horizontalRatio) > Math.abs(verticalRatio) ? horizontalRatio : verticalRatio));
+    nextWidth = widthMm * scale;
+    nextHeight = heightMm * scale;
+  } else {
+    if (horizontalDelta !== 0) nextWidth += horizontalDelta;
+    if (verticalDelta !== 0) nextHeight += verticalDelta;
+  }
+  return {
+    widthMm: clamp(nextWidth, 32, RECEIPT_FLOW_WIDTH_MM),
+    heightMm: clamp(nextHeight, 20, RECEIPT_FLOW_HEIGHT_MM),
+  };
+}
+
 function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<string, number>) {
   if (item.expense.receiptMode === "offline-original" && !item.supporting) {
     return { widthMm: 82, heightMm: 62 };
@@ -53,12 +83,14 @@ function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<str
     ? measuredAspectRatios?.get(item.attachment.id) ?? layout.aspectRatio
     : layout.aspectRatio;
   const safeAspectRatio = clamp(rawAspectRatio || DEFAULT_IMAGE_LAYOUT.aspectRatio, 0.12, 8);
-  const normalizedRotation = ((layout.rotation % 360) + 360) % 360;
-  const aspectRatio = normalizedRotation === 90 || normalizedRotation === 270
-    ? 1 / safeAspectRatio
-    : safeAspectRatio;
+  const rotation = ((layout.rotation % 360) + 360) % 360 * Math.PI / 180;
+  const cosine = Math.abs(Math.cos(rotation));
+  const sine = Math.abs(Math.sin(rotation));
+  const aspectRatio = (safeAspectRatio * cosine + sine) / (safeAspectRatio * sine + cosine);
   let widthMm = clamp(layout.widthMm || DEFAULT_IMAGE_LAYOUT.widthMm, 32, RECEIPT_FLOW_WIDTH_MM);
-  let heightMm = widthMm / aspectRatio;
+  let heightMm = layout.heightMm && Number.isFinite(layout.heightMm)
+    ? clamp(layout.heightMm, 20, RECEIPT_FLOW_HEIGHT_MM)
+    : widthMm / aspectRatio;
   if (heightMm > RECEIPT_FLOW_HEIGHT_MM) {
     const scale = RECEIPT_FLOW_HEIGHT_MM / heightMm;
     widthMm *= scale;

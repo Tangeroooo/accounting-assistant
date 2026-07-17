@@ -86,11 +86,14 @@ function drawPlacedImage(
   attachment: Attachment,
 ) {
   const layout = { ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout };
-  const normalizedRotation = ((layout.rotation % 360) + 360) % 360;
-  const rotated = normalizedRotation === 90 || normalizedRotation === 270;
-  const fittedWidth = rotated ? source.height : source.width;
-  const fittedHeight = rotated ? source.width : source.height;
-  const baseScale = Math.min(bounds.width / fittedWidth, bounds.height / fittedHeight);
+  const rotation = layout.rotation * Math.PI / 180;
+  const fittedWidth = Math.abs(source.width * Math.cos(rotation)) + Math.abs(source.height * Math.sin(rotation));
+  const fittedHeight = Math.abs(source.width * Math.sin(rotation)) + Math.abs(source.height * Math.cos(rotation));
+  const horizontalScale = bounds.width / fittedWidth;
+  const verticalScale = bounds.height / fittedHeight;
+  const baseScale = layout.fit === "cover"
+    ? Math.max(horizontalScale, verticalScale)
+    : Math.min(horizontalScale, verticalScale);
   const width = source.width * baseScale * layout.scale;
   const height = source.height * baseScale * layout.scale;
   const centerX = bounds.x + bounds.width / 2 + bounds.width * layout.offsetX / 100;

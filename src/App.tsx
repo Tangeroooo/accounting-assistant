@@ -8,6 +8,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   ClipboardPaste,
+  Crop,
   Download,
   FileArchive,
   FileImage,
@@ -67,7 +68,7 @@ import {
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
 import { recognizeReceipt, type OcrSuggestion } from "./lib/ocr";
-import { buildReceiptBookItems, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { buildReceiptBookItems, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookPdf } from "./lib/receipt-pdf";
 import ProjectOnboarding from "./components/ProjectOnboarding";
 
@@ -527,11 +528,25 @@ function AccountingView({ project, incomes, totals, issues, updateProject, onAdd
 
 function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { project: ProjectData; updateProject: (updater: (project: ProjectData) => ProjectData) => void; onSavePdf: () => void; pdfBusy: boolean }) {
   const [selectedAttachmentId, setSelectedAttachmentId] = useState<string | null>(null);
+  const [croppingAttachmentId, setCroppingAttachmentId] = useState<string | null>(null);
   const dragRef = useRef<{ attachmentId: string; x: number; y: number } | null>(null);
+  const resizeRef = useRef<{
+    attachmentId: string;
+    handle: string;
+    startX: number;
+    startY: number;
+    widthMm: number;
+    heightMm: number;
+    pixelsPerMmX: number;
+    pixelsPerMmY: number;
+    cropMode: boolean;
+    layout: NonNullable<Attachment["layout"]>;
+  } | null>(null);
   const transportFuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
   const receiptItems = buildReceiptBookItems(project);
   const receiptPages = layoutReceiptBookItems(receiptItems);
   const selectedItem = receiptItems.find((item) => item.attachment?.id === selectedAttachmentId);
+  const selectedPlacement = receiptPages.flat().find((placement) => placement.item.attachment?.id === selectedAttachmentId);
   const selectedLayout = { ...DEFAULT_IMAGE_LAYOUT, ...selectedItem?.attachment?.layout };
   const updateAttachmentLayout = (attachmentId: string, updater: (layout: NonNullable<Attachment["layout"]>) => NonNullable<Attachment["layout"]>) => updateProject((current) => {
     const updateAttachment = (attachment: Attachment) => attachment.id === attachmentId ? { ...attachment, layout: updater({ ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout }) } : attachment;
@@ -555,6 +570,72 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     dragRef.current = { ...drag, x: event.clientX, y: event.clientY };
     updateAttachmentLayout(drag.attachmentId, (layout) => ({ ...layout, offsetX: Math.max(-100, Math.min(100, layout.offsetX + deltaX)), offsetY: Math.max(-100, Math.min(100, layout.offsetY + deltaY)) }));
   };
+  const startResize = (event: React.PointerEvent<HTMLButtonElement>, attachmentId: string, handle: string, placement: ReceiptFlowPlacement) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const bounds = event.currentTarget.closest(".receipt-flow-item")?.getBoundingClientRect();
+    const attachment = receiptItems.find((item) => item.attachment?.id === attachmentId)?.attachment;
+    if (!bounds || !attachment) return;
+    resizeRef.current = {
+      attachmentId,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      widthMm: placement.widthMm,
+      heightMm: placement.heightMm,
+      pixelsPerMmX: bounds.width / placement.widthMm,
+      pixelsPerMmY: bounds.height / placement.heightMm,
+      cropMode: croppingAttachmentId === attachmentId,
+      layout: { ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout },
+    };
+  };
+  const moveResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const resize = resizeRef.current;
+    if (!resize) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const deltaX = (event.clientX - resize.startX) / resize.pixelsPerMmX;
+    const deltaY = (event.clientY - resize.startY) / resize.pixelsPerMmY;
+    const { widthMm, heightMm } = resizePictureFrame({
+      widthMm: resize.widthMm,
+      heightMm: resize.heightMm,
+      handle: resize.handle,
+      deltaXmm: deltaX,
+      deltaYmm: deltaY,
+      cropMode: resize.cropMode,
+    });
+    updateAttachmentLayout(resize.attachmentId, () => ({
+      ...resize.layout,
+      widthMm,
+      heightMm,
+      fit: resize.cropMode ? "cover" : resize.layout.fit,
+    }));
+  };
+  const finishPointerEdit = () => {
+    dragRef.current = null;
+    resizeRef.current = null;
+  };
+  const selectAttachment = (attachmentId: string) => {
+    setSelectedAttachmentId(attachmentId);
+    if (croppingAttachmentId && croppingAttachmentId !== attachmentId) setCroppingAttachmentId(null);
+  };
+  const toggleCropMode = () => {
+    if (!selectedAttachmentId) return;
+    if (croppingAttachmentId === selectedAttachmentId) {
+      setCroppingAttachmentId(null);
+      return;
+    }
+    if (selectedPlacement) {
+      updateAttachmentLayout(selectedAttachmentId, (layout) => ({
+        ...layout,
+        widthMm: selectedPlacement.widthMm,
+        heightMm: selectedPlacement.heightMm,
+        fit: "cover",
+      }));
+    }
+    setCroppingAttachmentId(selectedAttachmentId);
+  };
   const registerAspectRatio = (attachmentId: string, aspectRatio: number) => {
     if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) return;
     updateAttachmentLayout(attachmentId, (layout) => Math.abs((layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio) - aspectRatio) < 0.002
@@ -570,20 +651,21 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       return { ...current, categoryEvidence: existing ? current.categoryEvidence.map((item) => item.id === existing.id ? { ...item, attachments: [...item.attachments, { ...attachment, kind: "other" }] } : item) : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport", kind: "fuel-calculation", title: "교통비 공통 주유비 산정 증빙", attachments: [{ ...attachment, kind: "other" }] }] };
     });
   };
-  return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림 너비를 바꾸면 뒤 영수증들이 워드프로세서처럼 자동 줄바꿈되고 다음 A4 페이지로 이어집니다." action={<button className="button accent no-print" onClick={onSavePdf} disabled={pdfBusy || project.expenses.length === 0}><Download size={18} /> {pdfBusy ? "PDF 생성 중" : "PDF 저장"}</button>} />
-    <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>온라인</strong><span>배치 너비에 맞춰 자동 재배치</span></div><div><span className="legend offline" /><strong>오프라인</strong><span>중앙의 작은 빈 점선 위에 실물 부착</span></div><div><strong>A4 흐름 배치</strong><span>좌→우 · 위→아래 · 자동 다음 페이지</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 PDF에 넣지 않고 인쇄 후 직접 기입</div></div>
+  return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." action={<button className="button accent no-print" onClick={onSavePdf} disabled={pdfBusy || project.expenses.length === 0}><Download size={18} /> {pdfBusy ? "PDF 생성 중" : "PDF 저장"}</button>} />
+    <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>자동 배치</strong><span>크기가 바뀌면 뒤 그림과 페이지가 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 PDF에 넣지 않고 인쇄 후 직접 기입</div></div>
     <div className={`panel receipt-editor-controls no-print ${selectedItem?.attachment ? "active" : ""}`}>
       <div className="editor-selection"><FileImage size={22} /><div><strong>{selectedItem?.attachment ? selectedItem.attachment.originalName : "편집할 온라인 영수증을 선택하세요"}</strong><span>{selectedItem ? `${getCategory(selectedItem.expense.category).label} · ${selectedItem.expense.content}` : "이미지를 클릭하면 조정 도구가 활성화됩니다."}</span></div></div>
-      <label><span>배치 너비 {Math.round(selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm)}mm</span><input type="range" min="32" max="190" step="1" value={selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, widthMm: Number(event.target.value) }))} /></label>
+      <label><span>정밀 너비 {Math.round(selectedPlacement?.widthMm ?? selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm)}mm</span><input type="range" min="32" max="190" step="1" value={selectedPlacement?.widthMm ?? selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, widthMm: Number(event.target.value) }))} /></label>
       <label><span>이미지 확대·자르기</span><input type="range" min="0.5" max="3" step="0.05" value={selectedLayout.scale} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, scale: Number(event.target.value) }))} /></label>
       <label><span>좌우</span><input type="range" min="-100" max="100" step="1" value={selectedLayout.offsetX} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, offsetX: Number(event.target.value) }))} /></label>
       <label><span>상하</span><input type="range" min="-100" max="100" step="1" value={selectedLayout.offsetY} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, offsetY: Number(event.target.value) }))} /></label>
-      <button className="button secondary" disabled={!selectedAttachmentId} onClick={() => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, rotation: (layout.rotation + 90) % 360 }))}><RotateCw size={16} /> 90°</button>
-      <button className="button ghost" disabled={!selectedAttachmentId} onClick={() => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...DEFAULT_IMAGE_LAYOUT, aspectRatio: layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio }))}><RotateCcw size={16} /> 맞춤 초기화</button>
+      <button className={`button crop-button ${croppingAttachmentId === selectedAttachmentId ? "active" : "secondary"}`} disabled={!selectedAttachmentId} onClick={toggleCropMode}><Crop size={16} /> {croppingAttachmentId === selectedAttachmentId ? "자르기 완료" : "자르기"}</button>
+      <button className="button secondary" disabled={!selectedAttachmentId} onClick={() => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, widthMm: layout.heightMm ?? layout.widthMm, heightMm: layout.heightMm ? layout.widthMm : undefined, rotation: (layout.rotation + 90) % 360 }))}><RotateCw size={16} /> 90°</button>
+      <button className="button ghost" disabled={!selectedAttachmentId} onClick={() => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...DEFAULT_IMAGE_LAYOUT, aspectRatio: layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio }))}><RotateCcw size={16} /> 원본 비율</button>
     </div>
     {receiptPages.map((placements, pageIndex) => <article className="receipt-sheet receipt-flow-sheet" key={`receipt-page-${pageIndex}`}>
       <ReceiptHeader project={project} />
-      <div className="receipt-flow-canvas">{placements.map((placement) => <ReceiptTile key={placement.item.id} project={project} placement={placement} selected={placement.item.attachment?.id === selectedAttachmentId} onSelect={setSelectedAttachmentId} onAspectRatio={registerAspectRatio} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} />)}</div>
+      <div className="receipt-flow-canvas">{placements.map((placement) => <ReceiptTile key={placement.item.id} project={project} placement={placement} selected={placement.item.attachment?.id === selectedAttachmentId} cropMode={placement.item.attachment?.id === croppingAttachmentId} onSelect={selectAttachment} onAspectRatio={registerAspectRatio} onPointerDown={startDrag} onPointerMove={moveDrag} onResizeStart={startResize} onResizeMove={moveResize} onPointerUp={finishPointerEdit} />)}</div>
       <div className="receipt-page-count no-print">{pageIndex + 1} / {receiptPages.length}</div>
     </article>)}
     {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && <div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} />{transportFuelEvidence?.attachments.length ? <PrintableAttachment project={project} attachment={transportFuelEvidence.attachments[0]} alt="교통비 공통 주유비 산정 증빙" /> : <div className="attachment-placeholder no-print"><Fuel size={35} /><strong>주유비 산정 증빙 1건을 추가하세요</strong><span>주유 영수증마다 붙이지 않고 교통비 전체에 한 번만 첨부합니다.</span><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><Plus size={17} /> 증빙 선택</button>{!project.projectDirectory && <small>프로젝트를 먼저 저장해 주세요.</small>}</div>}</div>}
@@ -595,14 +677,15 @@ function ReceiptHeader({ project }: { project: ProjectData }) {
   return <div className="official-receipt-header"><h2>{project.meta.community || "○○○"} 공동체 - 국내 {project.meta.teamName || "○○○팀"} - 영수증철</h2></div>;
 }
 
-function ReceiptTile({ project, placement, selected, onSelect, onAspectRatio, onPointerDown, onPointerMove, onPointerUp }: { project: ProjectData; placement: ReceiptFlowPlacement; selected: boolean; onSelect: (id: string) => void; onAspectRatio: (id: string, aspectRatio: number) => void; onPointerDown: (event: React.PointerEvent<HTMLDivElement>, id: string) => void; onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void; onPointerUp: () => void }) {
+function ReceiptTile({ project, placement, selected, cropMode, onSelect, onAspectRatio, onPointerDown, onPointerMove, onResizeStart, onResizeMove, onPointerUp }: { project: ProjectData; placement: ReceiptFlowPlacement; selected: boolean; cropMode: boolean; onSelect: (id: string) => void; onAspectRatio: (id: string, aspectRatio: number) => void; onPointerDown: (event: React.PointerEvent<HTMLDivElement>, id: string) => void; onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void; onResizeStart: (event: React.PointerEvent<HTMLButtonElement>, id: string, handle: string, placement: ReceiptFlowPlacement) => void; onResizeMove: (event: React.PointerEvent<HTMLButtonElement>) => void; onPointerUp: () => void }) {
   const { item } = placement;
   const { expense, attachment, supporting } = item;
   const category = getCategory(expense.category);
   const receiptNumber = expense.receiptNumber ?? "?";
   const receiptCode = `${category.number}-${receiptNumber}${supporting ? " · 추가" : ""}`;
-  return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${expense.receiptMode === "offline-original" && !supporting ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
-    <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onClick={() => attachment && onSelect(attachment.id)}>
+  const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+  return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${cropMode ? "crop-mode" : ""} ${expense.receiptMode === "offline-original" && !supporting ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
+    <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment && onSelect(attachment.id)}>
       <span className="receipt-screen-tag no-print">{receiptCode} · {expense.content}</span>
       {expense.receiptMode === "offline-original" && !supporting
         ? <div className="physical-placeholder"><span className="no-print">실물 영수증을 중앙에 붙이세요</span></div>
@@ -610,6 +693,10 @@ function ReceiptTile({ project, placement, selected, onSelect, onAspectRatio, on
           ? <PrintableAttachment project={project} attachment={attachment} alt={`${receiptCode} ${expense.content}${supporting ? " 추가 증빙" : " 영수증"}`} editable onAspectRatio={(aspectRatio) => onAspectRatio(attachment.id, aspectRatio)} />
           : <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>온라인 영수증 없음</strong><span>PDF 저장 전에 첨부해 주세요.</span></div>}
     </div>
+    {selected && attachment && <div className={`picture-selection no-print ${cropMode ? "cropping" : "resizing"}`}>
+      {handles.map((handle) => <button key={handle} type="button" className={`picture-handle handle-${handle}`} aria-label={`${cropMode ? "자르기" : "크기 조절"} ${handle}`} onPointerDown={(event) => onResizeStart(event, attachment.id, handle, placement)} onPointerMove={onResizeMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />)}
+      {cropMode && <span className="crop-mode-label"><Crop size={12} /> 그림을 드래그해 위치 조정</span>}
+    </div>}
   </section>;
 }
 
@@ -621,7 +708,7 @@ function PrintableAttachment({ project, attachment, alt, editable = false, onAsp
   const quarterTurn = normalizedRotation === 90 || normalizedRotation === 270;
   const aspectRatio = layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio;
   const rotationFit = quarterTurn ? Math.max(aspectRatio, 1 / aspectRatio) : 1;
-  const contentStyle = editable ? { transform: `translate(${layout.offsetX}%, ${layout.offsetY}%) scale(${layout.scale * rotationFit}) rotate(${layout.rotation}deg)`, transformOrigin: "center" } : undefined;
+  const contentStyle = editable ? { transform: `translate(${layout.offsetX}%, ${layout.offsetY}%) scale(${layout.scale * rotationFit}) rotate(${layout.rotation}deg)`, transformOrigin: "center", objectFit: layout.fit } : undefined;
   return <div className={`online-receipt ${editable ? "editable" : ""}`}>{attachment.mimeType === "application/pdf" ? <embed src={url} type="application/pdf" aria-label={alt} style={contentStyle} /> : <img src={url} alt={alt} draggable={false} style={contentStyle} onLoad={(event) => onAspectRatio?.(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} />}</div>;
 }
 

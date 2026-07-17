@@ -52,7 +52,9 @@ export interface Attachment {
   mimeType: string;
   layout?: {
     widthMm?: number;
+    heightMm?: number;
     aspectRatio?: number;
+    fit?: "contain" | "cover";
     scale: number;
     offsetX: number;
     offsetY: number;

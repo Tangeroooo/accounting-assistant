@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, layoutReceiptBookItems } from "./receipt-book";
+import { buildReceiptBookItems, layoutReceiptBookItems, resizePictureFrame } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -62,5 +62,27 @@ describe("영수증철 페이지 구성", () => {
       { xMm: 104, yMm: 0 },
       { xMm: 0, yMm: 104 },
     ]);
+  });
+
+  it("자르기 프레임의 독립적인 너비와 높이를 자동 배치에 반영한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [{
+      ...expense(1),
+      receiptMode: "online-printable",
+      attachments: [{
+        id: "cropped",
+        relativePath: "attachments/cropped.png",
+        originalName: "cropped.png",
+        mimeType: "image/png",
+        kind: "online-receipt",
+        layout: { widthMm: 110, heightMm: 42, aspectRatio: 0.5, fit: "cover", scale: 1, offsetX: 0, offsetY: 0, rotation: 0 },
+      }],
+    }];
+    expect(layoutReceiptBookItems(buildReceiptBookItems(project))[0][0]).toMatchObject({ widthMm: 110, heightMm: 42 });
+  });
+
+  it("일반 모드의 모서리 핸들은 비율을 유지하고 자르기 핸들은 한쪽 프레임만 바꾼다", () => {
+    expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "se", deltaXmm: 20, deltaYmm: 5, cropMode: false })).toEqual({ widthMm: 100, heightMm: 150 });
+    expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "e", deltaXmm: -25, deltaYmm: 0, cropMode: true })).toEqual({ widthMm: 55, heightMm: 120 });
   });
 });
