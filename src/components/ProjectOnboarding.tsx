@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Check, FileArchive, FileSpreadsheet, FolderOpen, ReceiptText, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, FileSpreadsheet, FolderOpen, LoaderCircle, ReceiptText, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import type { IncomeType, ProjectData } from "../types";
@@ -16,11 +16,12 @@ interface ProjectOnboardingProps {
 const steps = [
   { title: "팀 기본정보", description: "보고서 제목과 활동 기간을 먼저 정합니다." },
   { title: "수입 입력", description: "회비 단가와 인원수, 지원금을 입력합니다." },
-  { title: "저장 준비", description: "이미지를 포함할 프로젝트 파일을 만듭니다." },
+  { title: "저장 위치", description: ".barun 파일을 저장할 폴더와 이름을 선택합니다." },
 ];
 
 export default function ProjectOnboarding({ project, projectFilePath, requiresDirectory, updateProject, onChooseDirectory, onFinish, onOpen }: ProjectOnboardingProps) {
   const [step, setStep] = useState(0);
+  const [choosingStorage, setChoosingStorage] = useState(false);
   const meta = project.meta;
   const setMeta = (key: keyof ProjectData["meta"], value: string | number) => updateProject((current) => ({ ...current, meta: { ...current.meta, [key]: value } }));
   const incomeAmount = (type: IncomeType) => project.incomes.filter((income) => income.type === type).reduce((sum, income) => sum + income.amount, 0);
@@ -33,6 +34,14 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
   const duesTotal = Math.max(0, project.duesPerPerson) * Math.max(0, meta.headcount);
   const totalIncome = duesTotal + incomeAmount("teamSupport") + incomeAmount("flowing");
   const storageReady = !requiresDirectory || Boolean(projectFilePath);
+  const chooseStorage = async () => {
+    setChoosingStorage(true);
+    try {
+      await onChooseDirectory();
+    } finally {
+      setChoosingStorage(false);
+    }
+  };
 
   return <main className="onboarding-shell">
     <div className="onboarding-brand"><span><ReceiptText size={20} /></span><div><strong>바른장부</strong><small>처음 회계해도 순서대로</small></div></div>
@@ -66,16 +75,27 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
           <div className="onboarding-total"><span>현재 총수입</span><strong>{totalIncome.toLocaleString("ko-KR")}원</strong></div>
         </>}
         {step === 2 && <>
-          <div className="onboarding-heading"><span>3 / 3</span><h2>프로젝트 파일을 만들어 둘까요?</h2><p>영수증 이미지와 입력 내용을 하나의 .barun 파일에 함께 보관합니다.</p></div>
-          <button className={`storage-choice ${projectFilePath ? "selected" : ""}`} onClick={onChooseDirectory}>
-            <span><FileArchive size={27} /></span><div><strong>{projectFilePath ? "프로젝트 파일 준비 완료" : ".barun 프로젝트 저장"}</strong><small>{projectFilePath || "원하는 폴더와 파일 이름을 선택하세요. 나중에 다른 컴퓨터로 파일 하나만 옮기면 됩니다."}</small></div>{projectFilePath && <Check size={21} />}
-          </button>
-          <div className="onboarding-output-preview"><div><FileSpreadsheet size={22} /><span><strong>회계보고서 Excel</strong><small>원본 양식의 복사본</small></span></div><ArrowRight size={16} /><div><ReceiptText size={22} /><span><strong>영수증철 PDF</strong><small>편집한 이미지 배치 반영</small></span></div></div>
-          <div className="safe-note"><Sparkles size={18} /><span><strong>이후부터는 자동 저장됩니다.</strong><small>입력 내용과 첨부 이미지를 선택한 .barun 파일에 함께 저장합니다.</small></span></div>
+          <div className="onboarding-heading"><span>3 / 3 · 저장 위치</span><h2>프로젝트 파일을 어디에 저장할까요?</h2><p>아래 버튼을 누르면 저장할 폴더와 <strong>.barun 파일 이름</strong>을 고르는 창이 열립니다.</p></div>
+          <div className={`storage-destination ${projectFilePath ? "selected" : ""}`}>
+            <span className="storage-destination-icon">{projectFilePath ? <Check size={27} /> : <FolderOpen size={27} />}</span>
+            <div className="storage-destination-copy">
+              <span>프로젝트 파일 저장 경로</span>
+              <strong>{projectFilePath ? "저장 위치를 선택했습니다" : "저장할 위치와 파일 이름을 선택해 주세요"}</strong>
+              <small>{projectFilePath ? "변경하려면 오른쪽의 ‘저장 위치 변경’을 누르세요." : "예: 문서/강릉팀 회계.barun · 입력 내용과 영수증 이미지가 이 파일 하나에 저장됩니다."}</small>
+              {projectFilePath && <div className="selected-storage-path"><FolderOpen size={15} /><span><small>선택한 경로</small><code>{projectFilePath}</code></span></div>}
+            </div>
+            <button className={`button ${projectFilePath ? "secondary" : "accent"} storage-browse-button`} onClick={chooseStorage} disabled={choosingStorage}>
+              {choosingStorage ? <LoaderCircle className="spin" size={17} /> : <FolderOpen size={17} />}
+              {choosingStorage ? "저장 창 여는 중" : projectFilePath ? "저장 위치 변경" : "저장 위치 선택"}
+            </button>
+          </div>
+          <div className="storage-choice-guide"><span>1</span><strong>저장 위치 선택</strong><ArrowRight size={15} /><span>2</span><strong>폴더·파일 이름 지정</strong><ArrowRight size={15} /><span>3</span><strong>회계 입력 시작</strong></div>
+          <div className="onboarding-output-preview"><div><FileSpreadsheet size={22} /><span><strong>회계보고서 Excel</strong><small>프로젝트에서 생성</small></span></div><ArrowRight size={16} /><div><ReceiptText size={22} /><span><strong>영수증철 PDF</strong><small>프로젝트에서 생성</small></span></div></div>
+          <div className="safe-note"><Sparkles size={18} /><span><strong>{projectFilePath ? "이 위치에 자동 저장됩니다." : "저장 위치는 한 번만 선택하면 됩니다."}</strong><small>{projectFilePath ? "회계 입력을 시작한 뒤 변경한 내용과 첨부 이미지가 자동으로 저장됩니다." : "선택한 .barun 파일 하나에 입력 내용과 첨부 이미지를 함께 보관합니다."}</small></span></div>
         </>}
         <div className="onboarding-actions">
           {step > 0 ? <button className="button ghost" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={17} /> 이전</button> : <span />}
-          {step < 2 ? <button className="button accent" disabled={step === 0 && !basicReady} onClick={() => setStep((current) => current + 1)}>다음 <ArrowRight size={17} /></button> : <button className="button accent" disabled={!storageReady} onClick={onFinish}><Check size={17} /> 프로젝트 시작</button>}
+          {step < 2 ? <button className="button accent" disabled={step === 0 && !basicReady} onClick={() => setStep((current) => current + 1)}>다음 <ArrowRight size={17} /></button> : <button className="button accent" disabled={!storageReady || choosingStorage} onClick={onFinish}><Check size={17} /> {storageReady ? "회계 입력 시작" : "저장 위치를 먼저 선택하세요"}</button>}
         </div>
       </div>
     </section>
