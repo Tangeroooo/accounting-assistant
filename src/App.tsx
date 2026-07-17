@@ -65,14 +65,15 @@ import { createAccountingWorkbook } from "./lib/excel-export";
 import { recognizeReceipt, type OcrSuggestion } from "./lib/ocr";
 import ProjectOnboarding from "./components/ProjectOnboarding";
 
-type ViewId = "overview" | "expenses" | "receipts" | "settlements" | "export" | "settings";
+type ViewId = "overview" | "incomes" | "expenses" | "receipts" | "settlements" | "export" | "settings";
 
 const navItems: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "진행 현황", icon: LayoutDashboard },
-  { id: "expenses", label: "1. 지출 입력", icon: WalletCards },
-  { id: "receipts", label: "2. 영수증 준비", icon: ReceiptText },
-  { id: "settlements", label: "3. 정산 확인", icon: Users },
-  { id: "export", label: "4. 검토·산출물", icon: FileCheck2 },
+  { id: "incomes", label: "1. 수입 관리", icon: CircleDollarSign },
+  { id: "expenses", label: "2. 지출 입력", icon: WalletCards },
+  { id: "receipts", label: "3. 영수증 준비", icon: ReceiptText },
+  { id: "settlements", label: "4. 정산 확인", icon: Users },
+  { id: "export", label: "5. 검토·산출물", icon: FileCheck2 },
   { id: "settings", label: "프로젝트 설정", icon: Settings },
 ];
 
@@ -298,8 +299,8 @@ function App() {
         </nav>
         <div className="sidebar-guide">
           <Sparkles size={18} />
-          <strong>{project.expenses.length === 0 ? "첫 단계: 지출 입력" : issues.length ? `확인할 항목 ${issues.length}개` : "산출물 준비 완료"}</strong>
-          <p>{project.expenses.length === 0 ? "첫 영수증을 보면서 날짜·내용·금액부터 등록해 보세요." : issues.length ? "검토·산출물에서 누락된 정보를 순서대로 확인하세요." : "Excel과 영수증철을 만들 수 있습니다."}</p>
+          <strong>{incomes.total === 0 ? "첫 단계: 수입 입력" : project.expenses.length === 0 ? "다음 단계: 지출 입력" : issues.length ? `확인할 항목 ${issues.length}개` : "산출물 준비 완료"}</strong>
+          <p>{incomes.total === 0 ? "회비와 지원금처럼 이번 프로젝트에 들어온 재정을 먼저 입력하세요." : project.expenses.length === 0 ? "첫 영수증을 보면서 날짜·내용·금액을 등록해 보세요." : issues.length ? "검토·산출물에서 누락된 정보를 순서대로 확인하세요." : "Excel과 영수증철을 만들 수 있습니다."}</p>
         </div>
         <div className="sidebar-footer">
           <span className={`status-dot ${clovaStatus.configured ? "online" : "fallback"}`} />
@@ -323,6 +324,7 @@ function App() {
         {view === "overview" && (
           <Overview project={project} totals={totals} incomes={incomes} issues={issues} setView={setView} setEditingExpense={setEditingExpense} />
         )}
+        {view === "incomes" && <IncomeView incomes={incomes} updateProject={updateProject} />}
         {view === "expenses" && (
           <ExpensesView project={project} onAdd={() => setEditingExpense(newExpense(project))} onEdit={setEditingExpense} onDelete={(id) => updateProject((current) => ({ ...current, expenses: current.expenses.filter((expense) => expense.id !== id) }))} />
         )}
@@ -370,14 +372,20 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
 }) {
   const difference = incomes.total - totals.total;
   const completion = Math.max(8, Math.min(100, 100 - issues.filter((issue) => issue.severity === "error").length * 14 - issues.filter((issue) => issue.severity === "warning").length * 5));
-  const setupReady = Boolean(project.meta.community && project.meta.teamName && (!isTauri() || project.projectDirectory));
+  const incomeReady = incomes.total > 0;
   const expensesReady = project.expenses.length > 0;
-  const reviewReady = expensesReady && !issues.some((issue) => issue.severity === "error");
-  const workflowSteps: { number: number; title: string; description: string; done: boolean; current: boolean; action: string; view: ViewId }[] = [
-    { number: 1, title: "프로젝트 준비", description: setupReady ? "기본정보와 저장 폴더가 준비됐어요." : "팀 정보와 저장 폴더를 먼저 확인하세요.", done: setupReady, current: !setupReady, action: "기본정보", view: "settings" },
-    { number: 2, title: "지출 입력", description: expensesReady ? `${project.expenses.length}건을 날짜순으로 정리했어요.` : "영수증을 보며 첫 지출을 등록하세요.", done: expensesReady, current: setupReady && !expensesReady, action: "지출 입력", view: "expenses" },
-    { number: 3, title: "누락 검토", description: reviewReady ? "필수 검사를 모두 통과했어요." : expensesReady ? `${issues.length}개 항목을 확인해 주세요.` : "지출을 입력하면 자동으로 검사합니다.", done: reviewReady, current: expensesReady && !reviewReady, action: "검토하기", view: "export" },
-    { number: 4, title: "산출물 만들기", description: reviewReady ? "Excel과 영수증철을 만들 수 있어요." : "검사를 통과하면 활성화됩니다.", done: false, current: reviewReady, action: "산출물", view: "export" },
+  const receiptsReady = expensesReady
+    && project.expenses.every((expense) => expense.receiptMode === "offline-original" ? expense.originalConfirmed : expense.attachments.length > 0)
+    && (!project.expenses.some((expense) => expense.category === "transport" && expense.isFuel)
+      || project.categoryEvidence.some((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation" && evidence.attachments.length > 0));
+  const settlementReady = receiptsReady && settlementSummaries(project).every((summary) => summary.outstandingAmount === 0);
+  const outputReady = receiptsReady && settlementReady && !issues.some((issue) => issue.severity === "error");
+  const workflowSteps: { number: number; title: string; description: string; done: boolean; current: boolean; view: ViewId }[] = [
+    { number: 1, title: "수입 관리", description: incomeReady ? `총 ${money(incomes.total)}을 등록했어요.` : "회비와 지원금을 입력하세요.", done: incomeReady, current: !incomeReady, view: "incomes" },
+    { number: 2, title: "지출 입력", description: expensesReady ? `${project.expenses.length}건을 날짜순으로 정리했어요.` : "영수증을 보며 첫 지출을 등록하세요.", done: expensesReady, current: incomeReady && !expensesReady, view: "expenses" },
+    { number: 3, title: "영수증 준비", description: receiptsReady ? "출력할 증빙이 준비됐어요." : expensesReady ? "원본 보관과 첨부를 확인하세요." : "지출을 입력하면 준비할 수 있어요.", done: receiptsReady, current: expensesReady && !receiptsReady, view: "receipts" },
+    { number: 4, title: "정산 확인", description: settlementReady ? "개인 선결제 잔액을 확인했어요." : receiptsReady ? "돌려줄 금액을 확인하세요." : "영수증 준비 후 확인합니다.", done: settlementReady, current: receiptsReady && !settlementReady, view: "settlements" },
+    { number: 5, title: "검토·산출물", description: outputReady ? "Excel과 영수증철을 만들 수 있어요." : "자동 검사 결과를 확인하세요.", done: false, current: receiptsReady && settlementReady, view: "export" },
   ];
   return (
     <section className="page page-overview">
@@ -386,7 +394,7 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
         <button className="button accent" onClick={() => setEditingExpense(newExpense(project))}><Plus size={18} /> 지출 등록</button>
       </div>
       <div className="workflow-strip">
-        {workflowSteps.map((step) => <button key={step.number} className={`${step.done ? "done" : ""} ${step.current ? "current" : ""}`} onClick={() => step.number === 2 && !expensesReady ? setEditingExpense(newExpense(project)) : setView(step.view)}>
+        {workflowSteps.map((step) => <button key={step.number} className={`${step.done ? "done" : ""} ${step.current ? "current" : ""}`} onClick={() => step.view === "expenses" && !expensesReady ? setEditingExpense(newExpense(project)) : setView(step.view)}>
           <span className="workflow-number">{step.done ? <Check size={16} /> : step.number}</span>
           <span className="workflow-copy"><strong>{step.title}</strong><small>{step.description}</small></span>
           <ArrowRight size={15} />
@@ -424,6 +432,51 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
 
 function Metric({ icon: Icon, tone, label, value, sub }: { icon: typeof CircleDollarSign; tone: string; label: string; value: string; sub: string }) {
   return <div className="metric-card"><div className={`metric-icon ${tone}`}><Icon size={21} /></div><div><span>{label}</span><h3>{value}</h3><p>{sub}</p></div></div>;
+}
+
+function IncomeView({ incomes, updateProject }: {
+  incomes: ReturnType<typeof incomeTotals>;
+  updateProject: (updater: (project: ProjectData) => ProjectData) => void;
+}) {
+  const setIncomeAmount = (type: IncomeType, amount: number) => updateProject((current) => {
+    const existing = current.incomes.find((item) => item.type === type);
+    if (existing) {
+      return {
+        ...current,
+        incomes: current.incomes
+          .map((item) => item.id === existing.id ? { ...item, amount } : item)
+          .filter((item, index, items) => item.type !== type || items.findIndex((candidate) => candidate.type === type) === index),
+      };
+    }
+    return { ...current, incomes: [...current.incomes, { id: crypto.randomUUID(), type, amount, receivedAt: "", memo: "" }] };
+  });
+  const sources: { type: IncomeType; number: number; title: string; description: string; amount: number }[] = [
+    { type: "dues", number: 1, title: "회비", description: "팀원들이 낸 회비를 입력합니다.", amount: incomes.dues },
+    { type: "teamSupport", number: 2, title: "팀별사역지원금", description: "교회에서 팀에 지원한 사역비를 입력합니다.", amount: incomes.teamSupport },
+    { type: "flowing", number: 3, title: "재정플로잉", description: "추가로 흘려보내 받은 재정을 입력합니다.", amount: incomes.flowing },
+  ];
+
+  return <section className="page income-page">
+    <PageHeading eyebrow="STEP 1 · INCOME" title="수입 관리" description="이번 프로젝트에 들어온 재정을 항목별로 입력합니다. 입력한 금액은 공식 회계보고서의 수입부와 총괄표에 반영됩니다." />
+    <div className="panel income-summary-card">
+      <div className="income-summary-icon"><CircleDollarSign size={28} /></div>
+      <div><span>현재 등록된 총수입</span><strong>{money(incomes.total)}</strong><small>회비 + 팀별사역지원금 + 재정플로잉</small></div>
+      <div className={`income-summary-status ${incomes.total > 0 ? "ready" : "empty"}`}>{incomes.total > 0 ? <Check size={17} /> : <AlertCircle size={17} />}{incomes.total > 0 ? "입력됨" : "입력 필요"}</div>
+    </div>
+    <div className="income-source-grid">
+      {sources.map((source) => <div className="panel income-source-card" key={source.type}>
+        <div className="income-source-head"><span className="income-source-number">{source.number}</span><CircleDollarSign size={21} /></div>
+        <h2>{source.title}</h2>
+        <p>{source.description}</p>
+        <label className="income-amount-field">
+          <span>금액</span>
+          <div><input type="number" min="0" value={source.amount || ""} onChange={(event) => setIncomeAmount(source.type, Math.max(0, Number(event.target.value) || 0))} placeholder="0" /><em>원</em></div>
+        </label>
+        <div className={`income-source-status ${source.amount > 0 ? "ready" : "empty"}`}>{source.amount > 0 ? <Check size={14} /> : <span />}{source.amount > 0 ? money(source.amount) : "아직 입력하지 않음"}</div>
+      </div>)}
+    </div>
+    <div className="privacy-note"><BadgeCheck size={17} /><div><strong>입력한 수입은 프로젝트에 자동 저장됩니다.</strong><span>금액을 바꾸면 총수입과 검산 결과, Excel 산출물에 즉시 반영됩니다.</span></div></div>
+  </section>;
 }
 
 function ExpensesView({ project, onAdd, onEdit, onDelete }: { project: ProjectData; onAdd: () => void; onEdit: (expense: Expense) => void; onDelete: (id: string) => void }) {
@@ -521,22 +574,13 @@ function SettingsView({ project, updateProject, clovaStatus, setClovaStatus, onT
   const [secret, setSecret] = useState("");
   const meta = project.meta;
   const setMeta = (key: keyof ProjectData["meta"], value: string | number) => updateProject((current) => ({ ...current, meta: { ...current.meta, [key]: value } }));
-  const incomeAmount = (type: IncomeType) => project.incomes.filter((item) => item.type === type).reduce((sum, item) => sum + item.amount, 0);
-  const setIncomeAmount = (type: IncomeType, amount: number) => updateProject((current) => {
-    const existing = current.incomes.find((item) => item.type === type);
-    if (existing) {
-      return { ...current, incomes: current.incomes.map((item) => item.id === existing.id ? { ...item, amount } : item).filter((item, index, items) => item.type !== type || items.findIndex((candidate) => candidate.type === type) === index) };
-    }
-    return { ...current, incomes: [...current.incomes, { id: crypto.randomUUID(), type, amount, receivedAt: "", memo: "" }] };
-  });
   const handleClovaSave = async () => { try { await saveClovaConfig(url, secret); const status = await getClovaStatus(); setClovaStatus(status); setSecret(""); onToast("CLOVA OCR 설정을 OS 보안 저장소에 보관했습니다."); } catch (error) { onToast(error instanceof Error ? error.message : "설정을 저장하지 못했습니다."); } };
-  return <section className="page"><PageHeading eyebrow="PROJECT SETTINGS" title="프로젝트 설정" description="공식 회계보고서에 필요한 기본 정보와 OCR 방식을 설정합니다." />
+  return <section className="page"><PageHeading eyebrow="PROJECT SETTINGS" title="프로젝트 설정" description="팀 기본정보, 저장 위치, OCR과 내부 관리 정보를 설정합니다. 수입은 별도의 ‘수입 관리’에서 입력합니다." />
     <div className="settings-grid"><div className="panel form-panel"><div className="panel-heading"><div><span className="eyebrow">BASIC INFO</span><h2>팀 기본 정보</h2></div></div><div className="field-grid"><Field label="공동체" value={meta.community} onChange={(value) => setMeta("community", value)} /><Field label="그룹" value={meta.groupName} onChange={(value) => setMeta("groupName", value)} /><Field label="팀 이름" value={meta.teamName} onChange={(value) => setMeta("teamName", value)} /><Field label="사역지" value={meta.destination} onChange={(value) => setMeta("destination", value)} /><Field label="출발일" type="date" value={meta.startDate} onChange={(value) => setMeta("startDate", value)} /><Field label="귀국일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} /><Field label="인원" type="number" value={String(meta.headcount)} onChange={(value) => setMeta("headcount", Number(value))} /><Field label="제출일" type="date" value={meta.submissionDate} onChange={(value) => setMeta("submissionDate", value)} /><Field label="담당 교역자" value={meta.pastorName} onChange={(value) => setMeta("pastorName", value)} /><Field label="팀장" value={meta.leaderName} onChange={(value) => setMeta("leaderName", value)} /><Field label="팀장 연락처" value={meta.leaderPhone} onChange={(value) => setMeta("leaderPhone", value)} /><Field label="회계" value={meta.accountantName} onChange={(value) => setMeta("accountantName", value)} /><Field label="회계 연락처" value={meta.accountantPhone} onChange={(value) => setMeta("accountantPhone", value)} /></div></div>
       <div className="settings-side"><div className="panel ocr-panel"><div className="panel-heading"><div><span className="eyebrow">OCR ENGINE</span><h2>영수증 인식</h2></div><span className={`engine-status ${clovaStatus.configured ? "configured" : "fallback"}`}>{clovaStatus.configured ? "CLOVA" : "Tesseract"}</span></div><p>CLOVA URL과 Key가 있으면 우선 사용하고, 둘 중 하나라도 없으면 오픈소스 OCR로 자동 대체합니다.</p><label><span>Receipt OCR Invoke URL</span><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://.../document/receipt" /></label><label><span>Secret Key</span><input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder={clovaStatus.configured ? "변경할 때만 새 키 입력" : "X-OCR-SECRET"} /></label><button className="button primary wide" onClick={handleClovaSave} disabled={!url || !secret}>보안 저장소에 저장</button>{clovaStatus.configured && <button className="text-button danger-text" onClick={async () => { await clearClovaConfig(); setClovaStatus({ configured: false }); setUrl(""); onToast("CLOVA 설정을 삭제했습니다. 오픈소스 OCR로 전환합니다."); }}><RotateCcw size={15} /> 설정 삭제·대체 OCR 사용</button>}<small>Secret Key는 프로젝트 JSON이나 Excel에 저장하지 않습니다.</small></div>
         <div className="panel folder-panel"><FolderOpen size={25} /><div><span>프로젝트 폴더</span><strong>{project.projectDirectory || "아직 선택하지 않음"}</strong></div></div></div>
     </div>
-    <div className="settings-bottom-grid">
-      <div className="panel income-panel"><div className="panel-heading"><div><span className="eyebrow">INCOME</span><h2>수입부</h2></div><strong>{money(incomeAmount("dues") + incomeAmount("teamSupport") + incomeAmount("flowing"))}</strong></div><p>공식 회계보고서 수입부와 총괄표에 그대로 반영됩니다.</p><div className="income-fields"><Field label="1. 회비" type="number" value={String(incomeAmount("dues") || "")} onChange={(value) => setIncomeAmount("dues", Number(value))} /><Field label="2. 팀별사역지원금" type="number" value={String(incomeAmount("teamSupport") || "")} onChange={(value) => setIncomeAmount("teamSupport", Number(value))} /><Field label="3. 재정플로잉" type="number" value={String(incomeAmount("flowing") || "")} onChange={(value) => setIncomeAmount("flowing", Number(value))} /></div></div>
+    <div className="settings-bottom-grid settings-bottom-single">
       <div className="panel people-panel"><div className="panel-heading"><div><span className="eyebrow">OPTIONAL · INTERNAL ONLY</span><h2>정산 이름 관리</h2></div><span className="optional-badge">필요할 때만</span></div><p>지출에서 ‘개인이 먼저 결제’를 선택하고 이름을 입력하면 여기에 자동으로 추가됩니다. 이 화면에서는 이름과 계좌 메모를 고칠 수 있습니다.</p><div className="people-rows">{project.people.map((person) => <div className="person-edit-row" key={person.id}><div className="person-avatar">{person.name.slice(0, 1) || "?"}</div><input value={person.name} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, name: event.target.value } : item) }))} placeholder="이름" /><input value={person.bankMemo} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, bankMemo: event.target.value } : item) }))} placeholder="은행·계좌 메모 (선택)" /><button className="icon-button" aria-label="정산 대상자 삭제" onClick={() => updateProject((current) => ({ ...current, people: current.people.filter((item) => item.id !== person.id), expenses: current.expenses.map((expense) => expense.payerId === person.id ? { ...expense, payerId: undefined } : expense) }))}><Trash2 size={15} /></button></div>)}{project.people.length === 0 && <div className="empty-state small"><Users size={28} /><strong>아직 개인 선결제자가 없습니다</strong><span>미리 등록하지 않아도 됩니다. 지출 입력 중 이름을 바로 적어 주세요.</span></div>}</div></div>
     </div>
   </section>;
