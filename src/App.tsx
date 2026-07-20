@@ -68,7 +68,7 @@ import {
   saveProjectPackageAs,
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookPdf } from "./lib/receipt-pdf";
 import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
 import ProjectOnboarding from "./components/ProjectOnboarding";
@@ -838,7 +838,7 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${cropMode ? "crop-mode" : ""} ${offlineHolder ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
     {cropMode && attachment && <PrintableAttachment project={project} attachment={attachment} alt="자르기 중인 원본 그림" frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} ghost />}
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
-      <span className="receipt-screen-tag no-print">{receiptCode} · {expense.content}</span>
+      {attachment && <span className="receipt-screen-tag no-print">{receiptWatermarkLabel(item)}</span>}
       {offlineHolder
         ? <div className="physical-placeholder"><strong>{offlinePlaceholderLabel(item)}</strong><small>{evidenceId ? "산정 증빙을 중앙에 붙이세요" : "실물 영수증을 중앙에 붙이세요"}</small></div>
         : attachment

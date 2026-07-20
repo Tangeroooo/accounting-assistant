@@ -23,6 +23,7 @@ export interface ReceiptBookItem {
   offlineHolder?: OfflineReceiptHolder;
   evidenceId?: string;
   supporting: boolean;
+  receiptSequence: number;
 }
 
 export interface ReceiptFlowPlacement {
@@ -58,14 +59,14 @@ export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
           supporting: false,
         })),
         ...supporting.map((attachment) => ({ id: `${expense.id}-${attachment.id}`, expense, attachment, supporting: true })),
-      ];
+      ].map((item, index) => ({ ...item, receiptSequence: index + 1 }));
     }
     const baseAttachment = expense.receiptMode === "online-printable" ? expense.attachments[0] : undefined;
     const supporting = expense.attachments.slice(1);
     return [
       { id: `${expense.id}-receipt`, expense, attachment: baseAttachment, supporting: false },
       ...supporting.map((attachment) => ({ id: `${expense.id}-${attachment.id}`, expense, attachment, supporting: true })),
-    ];
+    ].map((item, index) => ({ ...item, receiptSequence: index + 1 }));
   });
   const hasFuelExpense = project.expenses.some((expense) => expense.category === "transport" && expense.isFuel);
   const fuelEvidence = hasFuelExpense
@@ -106,7 +107,7 @@ export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
       evidenceId: fuelEvidence.id,
       supporting: false,
     })),
-  ];
+  ].map((item, index) => ({ ...item, receiptSequence: index + 1 }));
   const lastTransportItemIndex = expenseItems.reduce(
     (lastIndex, item, index) => item.expense.category === "transport" ? index : lastIndex,
     -1,
@@ -116,6 +117,12 @@ export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
     ...evidenceItems,
     ...expenseItems.slice(lastTransportItemIndex + 1),
   ];
+}
+
+export function receiptWatermarkLabel(item: ReceiptBookItem) {
+  const categoryName = getCategory(item.expense.category).label;
+  const receiptNumber = item.evidenceId ? "공통증빙" : item.expense.receiptNumber ?? "?";
+  return `${categoryName}-${receiptNumber}-${item.receiptSequence}`;
 }
 
 export function offlinePlaceholderLabel(item: ReceiptBookItem) {

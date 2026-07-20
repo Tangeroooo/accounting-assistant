@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame } from "./receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -79,6 +79,23 @@ describe("영수증철 페이지 구성", () => {
       }],
     }];
     expect(layoutReceiptBookItems(buildReceiptBookItems(project))[0][0]).toMatchObject({ widthMm: 110, heightMm: 42 });
+  });
+
+  it("같은 영수증의 이미지에 항목명-영수증번호-일련번호 워터마크를 부여한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [{
+      ...expense(1),
+      receiptMode: "online-printable",
+      attachments: [
+        { id: "image-1", relativePath: "attachments/1.png", originalName: "1.png", mimeType: "image/png", kind: "online-receipt" },
+        { id: "image-2", relativePath: "attachments/2.png", originalName: "2.png", mimeType: "image/png", kind: "transaction-statement" },
+      ],
+    }];
+
+    expect(buildReceiptBookItems(project).map(receiptWatermarkLabel)).toEqual([
+      "식대간식비-1-1",
+      "식대간식비-1-2",
+    ]);
   });
 
   it("일반 모드의 모서리 핸들은 비율을 유지하고 자르기 핸들은 한쪽 프레임만 바꾼다", () => {
@@ -215,6 +232,10 @@ describe("영수증철 페이지 구성", () => {
     expect(items.slice(-2).map((item) => ({ evidenceId: item.evidenceId, attachment: item.attachment?.id, holder: item.offlineHolder?.id }))).toEqual([
       { evidenceId: "fuel-evidence", attachment: "fuel-image", holder: undefined },
       { evidenceId: "fuel-evidence", attachment: undefined, holder: "fuel-offline" },
+    ]);
+    expect(items.slice(-2).map(receiptWatermarkLabel)).toEqual([
+      "교통비-공통증빙-1",
+      "교통비-공통증빙-2",
     ]);
     expect(layoutReceiptBookItems(items).flat().at(-1)).toMatchObject({ widthMm: 90, heightMm: 70 });
   });
