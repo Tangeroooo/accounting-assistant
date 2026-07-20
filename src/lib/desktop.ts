@@ -1,7 +1,23 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Attachment, ProjectData } from "../types";
+import {
+  BROWSER_WORKSPACE,
+  browserAssetUrl,
+  browserDeleteAsset,
+  browserReadAsset,
+  browserWriteAsset,
+  clearBrowserRecoveryProject,
+  downloadBrowserFile,
+  loadBrowserRecoveryProject,
+  pickBrowserFiles,
+  replaceBrowserAssets,
+  saveBrowserRecoveryProject,
+  takePickedFile,
+} from "./browser-project-store";
 import { BARUN_EXTENSION, createBarunPackage, parseBarunPackage } from "./project-package";
+
+export { BROWSER_WORKSPACE, clearBrowserRecoveryProject, loadBrowserRecoveryProject, saveBrowserRecoveryProject };
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
@@ -12,7 +28,7 @@ export async function chooseProjectDirectory() {
 }
 
 export async function chooseProjectFile() {
-  if (!isTauri()) return null;
+  if (!isTauri()) return (await pickBrowserFiles(".barun,.json,application/json,application/zip"))[0] ?? null;
   const selected = await open({
     directory: false,
     multiple: false,
@@ -23,7 +39,7 @@ export async function chooseProjectFile() {
 }
 
 export async function chooseAttachment() {
-  if (!isTauri()) return null;
+  if (!isTauri()) return (await pickBrowserFiles("image/png,image/jpeg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf"))[0] ?? null;
   const selected = await open({
     directory: false,
     multiple: false,
@@ -34,7 +50,7 @@ export async function chooseAttachment() {
 }
 
 export async function chooseAttachments() {
-  if (!isTauri()) return [];
+  if (!isTauri()) return pickBrowserFiles("image/png,image/jpeg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf", true);
   const selected = await open({
     directory: false,
     multiple: true,
@@ -70,11 +86,18 @@ async function packageBytes(project: ProjectData) {
 }
 
 export async function writeAttachmentBytes(path: string, bytes: Uint8Array) {
+  if (!isTauri()) {
+    browserWriteAsset(path, bytes);
+    return;
+  }
   await invoke("write_binary_file", { path, bytes: Array.from(bytes) });
 }
 
 export async function deleteAttachmentFile(path: string) {
-  if (!isTauri()) return;
+  if (!isTauri()) {
+    browserDeleteAsset(path);
+    return;
+  }
   await invoke("delete_file_if_exists", { path });
 }
 
@@ -92,7 +115,7 @@ async function extractAssets(bytes: Uint8Array, workspaceDirectory: string) {
 
 export async function saveProjectPackage(project: ProjectData, packagePath: string) {
   if (!isTauri()) {
-    localStorage.setItem("accounting-assistant-project", JSON.stringify(project));
+    downloadBrowserFile(await packageBytes(project), packagePath.split(/[\\/]/).pop() || "회계 프로젝트.barun");
     return;
   }
   await writeAttachmentBytes(packagePath, await packageBytes(project));
@@ -104,7 +127,11 @@ export async function backupProjectPackageForUpdate(packagePath: string) {
 }
 
 export async function saveProjectPackageAs(project: ProjectData, defaultName: string) {
-  if (!isTauri()) return null;
+  if (!isTauri()) {
+    const browserProject = { ...project, projectDirectory: BROWSER_WORKSPACE };
+    downloadBrowserFile(await packageBytes(browserProject), defaultName);
+    return { project: browserProject, packagePath: undefined };
+  }
   const packagePath = await save({
     defaultPath: defaultName,
     filters: [{ name: "바른장부 프로젝트", extensions: [BARUN_EXTENSION] }],
@@ -117,18 +144,39 @@ export async function saveProjectPackageAs(project: ProjectData, defaultName: st
   return { packagePath, project: { ...project, projectDirectory: workspaceDirectory } };
 }
 
-export async function openProjectDocument(path: string): Promise<{ project: ProjectData; packagePath?: string }> {
+export async function openProjectDocument(path: string): Promise<{ project: ProjectData; packagePath?: string; sourceFormat: "barun" | "json" }> {
+  if (!isTauri()) {
+    const file = takePickedFile(path);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (file.name.toLowerCase().endsWith(".json")) {
+      const project = JSON.parse(new TextDecoder().decode(bytes)) as ProjectData;
+      replaceBrowserAssets(new Map());
+      return { project: { ...project, projectDirectory: BROWSER_WORKSPACE }, sourceFormat: "json" };
+    }
+    const parsed = await parseBarunPackage(bytes);
+    replaceBrowserAssets(parsed.assets);
+    return { project: { ...parsed.project, projectDirectory: BROWSER_WORKSPACE }, sourceFormat: "barun" };
+  }
   if (path.toLowerCase().endsWith(".json")) {
     const project = JSON.parse(await loadProjectFile(path)) as ProjectData;
-    return { project: { ...project, projectDirectory: project.projectDirectory || parentDirectory(path) } };
+    return { project: { ...project, projectDirectory: project.projectDirectory || parentDirectory(path) }, sourceFormat: "json" };
   }
   const bytes = new Uint8Array(await invoke<number[]>("read_binary_file", { path }));
   const workspaceDirectory = await prepareWorkspace(path);
   const portableProject = await extractAssets(bytes, workspaceDirectory);
-  return { project: { ...portableProject, projectDirectory: workspaceDirectory }, packagePath: path } as { project: ProjectData; packagePath: string };
+  return { project: { ...portableProject, projectDirectory: workspaceDirectory }, packagePath: path, sourceFormat: "barun" };
 }
 
 async function importAttachmentPath(projectDirectory: string, sourcePath: string): Promise<Attachment> {
+  if (!isTauri()) {
+    const file = takePickedFile(sourcePath);
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const mimeType = file.type || (extension === "pdf" ? "application/pdf" : extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg");
+    const safeName = file.name.replace(/[^0-9A-Za-z가-힣._-]+/g, "-");
+    const relativePath = `attachments/file-${crypto.randomUUID()}-${safeName}`;
+    browserWriteAsset(relativePath, new Uint8Array(await file.arrayBuffer()));
+    return { id: crypto.randomUUID(), relativePath, originalName: file.name, mimeType, kind: "online-receipt" };
+  }
   const copied = await invoke<{
     absolutePath: string;
     relativePath: string;
@@ -162,7 +210,6 @@ export async function importAttachments(projectDirectory: string): Promise<Attac
 }
 
 export async function importClipboardAttachment(projectDirectory: string, file: File): Promise<Attachment> {
-  if (!isTauri()) throw new Error("설치형 앱에서 클립보드 이미지를 프로젝트에 넣을 수 있습니다.");
   const mimeType = file.type || "image/png";
   const extension = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
   const originalName = file.name && !file.name.startsWith("image.") ? file.name : `클립보드-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
@@ -173,14 +220,13 @@ export async function importClipboardAttachment(projectDirectory: string, file: 
 
 export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: string, fileType: "excel" | "pdf" | "docx" = "excel") {
   if (!isTauri()) {
-    const blob = new Blob([bytes as BlobPart]);
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = defaultName;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    return null;
+    const mimeType = fileType === "pdf"
+      ? "application/pdf"
+      : fileType === "docx"
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    downloadBrowserFile(bytes, defaultName, mimeType);
+    return defaultName;
   }
   const path = await save({
     defaultPath: defaultName,
@@ -196,7 +242,7 @@ export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: strin
 }
 
 export async function readAttachmentBytes(absolutePath: string) {
-  if (!isTauri()) throw new Error("브라우저 미리보기에서는 로컬 첨부파일을 읽을 수 없습니다.");
+  if (!isTauri()) return browserReadAsset(absolutePath);
   return new Uint8Array(await invoke<number[]>("read_binary_file", { path: absolutePath }));
 }
 
@@ -205,5 +251,5 @@ export const attachmentAbsolutePath = (projectDirectory: string, relativePath: s
 
 export const attachmentAssetUrl = (projectDirectory: string, relativePath: string) => {
   const path = attachmentAbsolutePath(projectDirectory, relativePath);
-  return isTauri() ? convertFileSrc(path) : "";
+  return isTauri() ? convertFileSrc(path) : browserAssetUrl(path);
 };

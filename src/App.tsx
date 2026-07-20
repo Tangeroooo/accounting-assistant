@@ -60,13 +60,17 @@ import {
 import {
   attachmentAbsolutePath,
   backupProjectPackageForUpdate,
+  BROWSER_WORKSPACE,
   chooseProjectFile,
+  clearBrowserRecoveryProject,
   importAttachments,
   importClipboardAttachment,
   isTauri,
+  loadBrowserRecoveryProject,
   openProjectDocument,
   readAttachmentBytes,
   saveBinaryWithDialog,
+  saveBrowserRecoveryProject,
   saveProjectPackage,
   saveProjectPackageAs,
 } from "./lib/desktop";
@@ -97,85 +101,20 @@ function clipboardImageFile(event: ClipboardEvent) {
     ?.getAsFile() ?? undefined;
 }
 
-const sampleProject = (): ProjectData => {
-  const now = new Date().toISOString();
-  return applyDerivedState({
-    ...createEmptyProject(),
-    meta: {
-      community: "SNS CROSS",
-      groupName: "믿음그룹",
-      teamName: "강릉팀",
-      destination: "강원도 강릉",
-      startDate: "2026-07-27",
-      endDate: "2026-07-31",
-      headcount: 12,
-      leaderName: "홍길동",
-      leaderPhone: "010-0000-0000",
-      accountantName: "김회계",
-      accountantPhone: "010-1111-1111",
-      pastorName: "이교역자",
-      submissionDate: "2026-08-05",
-    },
-    duesPerPerson: 100_000,
-    incomes: [
-      { id: crypto.randomUUID(), type: "dues", amount: 1_200_000, receivedAt: "2026-07-20", memo: "팀 회비" },
-      { id: crypto.randomUUID(), type: "teamSupport", amount: 300_000, receivedAt: "2026-07-20", memo: "팀별 사역비" },
-    ],
-    people: [
-      { id: "person-1", name: "김회계", bankMemo: "국민은행" },
-      { id: "person-2", name: "박팀원", bankMemo: "신한은행" },
-    ],
-    expenses: [
-      {
-        id: crypto.randomUUID(), createdOrder: 1, category: "transport", date: "2026-07-27",
-        content: "강릉 왕복 주유", amount: 85_000, note: "", receiptMode: "offline-original",
-        originalConfirmed: true, attachments: [], offlineHolders: [{ id: "sample-transport-holder", widthMm: 82, heightMm: 62 }], itemDetails: "", isFuel: true, paymentSource: "personal",
-        payerId: "person-1", settlementTargetAmount: 85_000, settledAmount: 0, settlementStatus: "pending",
-      },
-      {
-        id: crypto.randomUUID(), createdOrder: 2, category: "meals", date: "2026-07-27",
-        content: "첫날 저녁 식사", amount: 144_000, note: "", receiptMode: "offline-original",
-        originalConfirmed: true, attachments: [], offlineHolders: [{ id: "sample-meal-holder", widthMm: 82, heightMm: 62 }], mealHeadcount: 12, itemDetails: "", isFuel: false,
-        paymentSource: "personal", payerId: "person-2", settlementTargetAmount: 144_000,
-        settledAmount: 44_000, settlementStatus: "partial",
-      },
-      {
-        id: crypto.randomUUID(), createdOrder: 3, category: "teamMinistry", date: "2026-07-28",
-        content: "어린이 사역 재료", amount: 71_000, note: "", receiptMode: "online-printable",
-        originalConfirmed: false, attachments: [], itemDetails: "색지, 네임펜", isFuel: false,
-        paymentSource: "team", settlementTargetAmount: 0, settledAmount: 0, settlementStatus: "not-applicable",
-      },
-    ],
-    categoryEvidence: [{
-      id: "sample-fuel-evidence",
-      category: "transport",
-      kind: "fuel-calculation",
-      title: "교통비 공통 주유비 산정 증빙",
-      attachments: [],
-      offlineHolders: [
-        { id: "sample-fuel-holder-1", widthMm: 32, heightMm: 62 },
-        { id: "sample-fuel-holder-2", widthMm: 82, heightMm: 62 },
-      ],
-    }],
-    receiptNumbersFinalized: false,
-    updatedAt: now,
-  });
-};
-
 function App() {
   const [project, setProject] = useState<ProjectData>(() => {
+    if (!isTauri()) return { ...createEmptyProject(), projectDirectory: BROWSER_WORKSPACE };
     const cached = localStorage.getItem("accounting-assistant-project");
-    if (cached) {
-      try {
-        return applyDerivedState(JSON.parse(cached) as ProjectData);
-      } catch {
-        // 손상된 브라우저 미리보기 캐시는 무시합니다.
-      }
+    if (!cached) return createEmptyProject();
+    try {
+      return applyDerivedState(JSON.parse(cached) as ProjectData);
+    } catch {
+      return createEmptyProject();
     }
-    return isTauri() ? createEmptyProject() : sampleProject();
   });
   const persistedSnapshotRef = useRef(JSON.stringify(project));
   const pdfMigrationRef = useRef("");
+  const [browserReady, setBrowserReady] = useState(isTauri());
   const [projectFilePath, setProjectFilePath] = useState<string | undefined>(() => {
     if (!isTauri()) return undefined;
     return localStorage.getItem("accounting-assistant-project-path") || undefined;
@@ -187,12 +126,26 @@ function App() {
   const [outputBusy, setOutputBusy] = useState<"excel" | ReceiptExportFormat | null>(null);
   const [receiptExportFormat, setReceiptExportFormat] = useState<ReceiptExportFormat>("pdf");
   const [showOnboarding, setShowOnboarding] = useState(
-    isTauri() && !project.projectDirectory && !project.meta.teamName && project.expenses.length === 0,
+    !project.meta.teamName && project.expenses.length === 0,
   );
 
   useEffect(() => {
     const serialized = JSON.stringify(project);
     localStorage.setItem("accounting-assistant-project", serialized);
+    if (!browserReady) return;
+    if (!isTauri()) {
+      setSaveState("saving");
+      const timer = window.setTimeout(async () => {
+        try {
+          await saveBrowserRecoveryProject(project);
+          persistedSnapshotRef.current = serialized;
+          setSaveState("saved");
+        } catch {
+          setSaveState("error");
+        }
+      }, 900);
+      return () => window.clearTimeout(timer);
+    }
     if (!projectFilePath || serialized === persistedSnapshotRef.current) return;
     setSaveState("saving");
     const timer = window.setTimeout(async () => {
@@ -205,7 +158,27 @@ function App() {
       }
     }, 1400);
     return () => window.clearTimeout(timer);
-  }, [project, projectFilePath]);
+  }, [browserReady, project, projectFilePath]);
+
+  useEffect(() => {
+    if (isTauri()) return;
+    void (async () => {
+      try {
+        const recovered = await loadBrowserRecoveryProject();
+        if (recovered) {
+          const next = applyDerivedState(recovered);
+          persistedSnapshotRef.current = JSON.stringify(next);
+          setProject(next);
+          setShowOnboarding(!next.meta.teamName && next.expenses.length === 0);
+          setSaveState("saved");
+        }
+      } catch {
+        setToast("이전 자동 복구본을 읽지 못했습니다. 새 프로젝트로 시작합니다.");
+      } finally {
+        setBrowserReady(true);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (projectFilePath) localStorage.setItem("accounting-assistant-project-path", projectFilePath);
@@ -222,7 +195,7 @@ function App() {
     .join("|"), [project.expenses, project.categoryEvidence]);
 
   useEffect(() => {
-    if (!isTauri() || !project.projectDirectory || !pdfAttachmentSignature) return;
+    if (!browserReady || !project.projectDirectory || !pdfAttachmentSignature) return;
     const migrationKey = `${project.id}:${project.projectDirectory}:${pdfAttachmentSignature}`;
     if (pdfMigrationRef.current === migrationKey) return;
     pdfMigrationRef.current = migrationKey;
@@ -245,7 +218,7 @@ function App() {
         setToast(`기존 PDF ${result.convertedPdfCount}개를 ${result.generatedImageCount}개 이미지로 바꾸고 프로젝트에 다시 저장했습니다.`);
       }
     })();
-  }, [pdfAttachmentSignature, project.id, project.projectDirectory, projectFilePath]);
+  }, [browserReady, pdfAttachmentSignature, project.id, project.projectDirectory, projectFilePath]);
 
   useEffect(() => {
     if (!toast) return;
@@ -264,7 +237,6 @@ function App() {
   };
 
   const handleChooseProjectFile = async () => {
-    if (!isTauri()) return true;
     try {
       const saved = await saveProjectPackageAs(project, `${project.meta.teamName || "새 회계 프로젝트"}.barun`);
       if (!saved) return false;
@@ -314,7 +286,7 @@ function App() {
       setShowOnboarding(false);
       setView("overview");
       setSaveState("saved");
-      setToast(opened.packagePath ? "이미지가 포함된 .barun 프로젝트를 열었습니다." : "기존 JSON 프로젝트를 열었습니다. 다음 저장 시 .barun으로 전환됩니다.");
+      setToast(opened.sourceFormat === "barun" ? "이미지가 포함된 .barun 프로젝트를 열었습니다." : "기존 JSON 프로젝트를 열었습니다. 다음 저장 시 .barun으로 전환됩니다.");
     } catch (error) {
       setToast(error instanceof Error ? error.message : "프로젝트를 열지 못했습니다.");
     }
@@ -322,7 +294,8 @@ function App() {
 
   const handleNew = () => {
     if (project.expenses.length > 0 && !window.confirm("현재 화면의 저장되지 않은 내용을 닫고 새 프로젝트를 시작할까요?")) return;
-    const next = createEmptyProject();
+    const next = isTauri() ? createEmptyProject() : { ...createEmptyProject(), projectDirectory: BROWSER_WORKSPACE };
+    if (!isTauri()) void clearBrowserRecoveryProject();
     persistedSnapshotRef.current = JSON.stringify(next);
     setProject(next);
     setProjectFilePath(undefined);
@@ -333,6 +306,18 @@ function App() {
 
   const handleFinishOnboarding = async () => {
     if (isTauri() && !projectFilePath) return;
+    if (!isTauri()) {
+      const next = project.projectDirectory ? project : { ...project, projectDirectory: BROWSER_WORKSPACE };
+      setProject(next);
+      try {
+        setSaveState("saving");
+        await saveBrowserRecoveryProject(next);
+        persistedSnapshotRef.current = JSON.stringify(next);
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }
     if (projectFilePath) {
       try {
         setSaveState("saving");
@@ -379,7 +364,9 @@ function App() {
     } finally { setOutputBusy(null); }
   };
 
-  if (showOnboarding) return <ProjectOnboarding project={project} projectFilePath={projectFilePath} requiresDirectory={isTauri()} updateProject={updateProject} onChooseDirectory={handleChooseProjectFile} onFinish={handleFinishOnboarding} onOpen={handleOpen} />;
+  if (!browserReady) return <div className="web-loading"><LoaderCircle className="spin" size={28} /><strong>브라우저에 저장된 프로젝트를 확인하고 있습니다</strong><span>입력 내용과 첨부 이미지는 이 기기 안에서만 불러옵니다.</span></div>;
+
+  if (showOnboarding) return <ProjectOnboarding project={project} projectFilePath={projectFilePath} requiresDirectory={isTauri()} webMode={!isTauri()} updateProject={updateProject} onChooseDirectory={handleChooseProjectFile} onFinish={handleFinishOnboarding} onOpen={handleOpen} />;
 
   return (
     <div className="app-shell">
@@ -415,11 +402,15 @@ function App() {
         <header className="topbar no-print">
           <div className="breadcrumb"><span>2026 여름 아웃리치</span><ArrowRight size={14} /><strong>{navItems.find((item) => item.id === view)?.label}</strong></div>
           <div className="top-actions">
+            {!isTauri() && <span className={`web-local-badge ${saveState === "error" ? "error" : ""}`}>
+              {saveState === "error" ? <AlertCircle size={14} /> : saveState === "saving" ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}
+              {saveState === "error" ? "자동 복구 확인 필요" : saveState === "saving" ? "이 기기에 저장 중" : "웹앱 · 이 기기에 자동 복구"}
+            </span>}
             <button className="button ghost" onClick={handleNew}><Plus size={17} /> 새 프로젝트</button>
             <button className="button ghost" onClick={handleOpen}><FolderOpen size={17} /> 열기</button>
             <button className="button primary" onClick={handleSave} disabled={saveState === "saving"}>
               {saveState === "saving" ? <LoaderCircle className="spin" size={17} /> : saveState === "saved" ? <Check size={17} /> : <Save size={17} />}
-              {!projectFilePath ? "프로젝트 저장" : saveState === "saving" ? "자동 저장 중" : saveState === "saved" ? "자동 저장됨" : saveState === "error" ? "저장 다시 시도" : "지금 저장"}
+              {!isTauri() ? ".barun 백업 저장" : !projectFilePath ? "프로젝트 저장" : saveState === "saving" ? "자동 저장 중" : saveState === "saved" ? "자동 저장됨" : saveState === "error" ? "저장 다시 시도" : "지금 저장"}
             </button>
             <AppUpdater beforeInstall={async () => {
               setSaveState("saving");
@@ -433,6 +424,7 @@ function App() {
                 }
                 savedProject = applyDerivedState(saved.project);
                 savedPath = saved.packagePath;
+                if (!savedPath) throw new Error("업데이트 전 프로젝트 파일 경로를 확인하지 못했습니다.");
                 setProject(savedProject);
                 setProjectFilePath(savedPath);
               } else {
@@ -1052,7 +1044,7 @@ function SettingsView({ project, projectFilePath, updateProject }: { project: Pr
   const setMeta = (key: keyof ProjectData["meta"], value: string | number) => updateProject((current) => ({ ...current, meta: { ...current.meta, [key]: value } }));
   return <section className="page"><PageHeading eyebrow="PROJECT SETTINGS" title="프로젝트 설정" description="팀 기본정보, .barun 프로젝트 파일과 내부 정산 이름을 관리합니다. 수입은 회계 입력·검토 화면에서 관리합니다." />
     <div className="settings-grid"><div className="panel form-panel"><div className="panel-heading"><div><span className="eyebrow">BASIC INFO</span><h2>팀 기본 정보</h2></div></div><div className="field-grid"><Field label="공동체" value={meta.community} onChange={(value) => setMeta("community", value)} /><Field label="그룹" value={meta.groupName} onChange={(value) => setMeta("groupName", value)} /><Field label="팀 이름" value={meta.teamName} onChange={(value) => setMeta("teamName", value)} /><Field label="사역지" value={meta.destination} onChange={(value) => setMeta("destination", value)} /><Field label="출발일" type="date" value={meta.startDate} onChange={(value) => setMeta("startDate", value)} /><Field label="도착일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} /><Field label="인원" type="number" value={String(meta.headcount)} onChange={(value) => setMeta("headcount", Number(value))} /><Field label="제출일" type="date" value={meta.submissionDate} onChange={(value) => setMeta("submissionDate", value)} /><Field label="담당 교역자" value={meta.pastorName} onChange={(value) => setMeta("pastorName", value)} /><Field label="팀장" value={meta.leaderName} onChange={(value) => setMeta("leaderName", value)} /><Field label="팀장 연락처" value={meta.leaderPhone} onChange={(value) => setMeta("leaderPhone", value)} /><Field label="회계" value={meta.accountantName} onChange={(value) => setMeta("accountantName", value)} /><Field label="회계 연락처" value={meta.accountantPhone} onChange={(value) => setMeta("accountantPhone", value)} /></div></div>
-      <div className="settings-side"><div className="panel folder-panel"><FileArchive size={25} /><div><span>바른장부 프로젝트 파일</span><strong>{projectFilePath || "아직 저장하지 않음"}</strong></div></div></div>
+      <div className="settings-side"><div className="panel folder-panel"><FileArchive size={25} /><div><span>바른장부 프로젝트 보관</span><strong>{projectFilePath || (!isTauri() ? "이 브라우저에 자동 복구 · .barun으로 백업 가능" : "아직 저장하지 않음")}</strong></div></div></div>
     </div>
     <div className="settings-bottom-grid settings-bottom-single">
       <div className="panel people-panel"><div className="panel-heading"><div><span className="eyebrow">OPTIONAL · INTERNAL ONLY</span><h2>정산 이름 관리</h2></div><span className="optional-badge">필요할 때만</span></div><p>지출에서 ‘개인이 먼저 결제’를 선택하고 이름을 입력하면 여기에 자동으로 추가됩니다. 이 화면에서는 이름과 계좌 메모를 고칠 수 있습니다.</p><div className="people-rows">{project.people.map((person) => <div className="person-edit-row" key={person.id}><div className="person-avatar">{person.name.slice(0, 1) || "?"}</div><input value={person.name} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, name: event.target.value } : item) }))} placeholder="이름" /><input value={person.bankMemo} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, bankMemo: event.target.value } : item) }))} placeholder="은행·계좌 메모 (선택)" /><button className="icon-button" aria-label="정산 대상자 삭제" onClick={() => updateProject((current) => ({ ...current, people: current.people.filter((item) => item.id !== person.id), expenses: current.expenses.map((expense) => expense.payerId === person.id ? { ...expense, payerId: undefined } : expense) }))}><Trash2 size={15} /></button></div>)}{project.people.length === 0 && <div className="empty-state small"><Users size={28} /><strong>아직 개인 선결제자가 없습니다</strong><span>미리 등록하지 않아도 됩니다. 지출 입력 중 이름을 바로 적어 주세요.</span></div>}</div></div>

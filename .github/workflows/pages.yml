@@ -7,6 +7,15 @@ on:
       - main
     paths:
       - "website/**"
+      - "src/**"
+      - "public/**"
+      - "resources/**"
+      - "scripts/generate-service-worker.mjs"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - "vite.config.ts"
       - ".github/workflows/pages.yml"
 
 permissions:
@@ -27,12 +36,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: Build web app
+        run: npm run build:web
+      - name: Assemble Pages website
+        run: |
+          mkdir -p pages-dist/app
+          cp -R website/. pages-dist/
+          cp -R web-dist/. pages-dist/app/
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload website
         uses: actions/upload-pages-artifact@v4
         with:
-          path: website
+          path: pages-dist
       - name: Deploy website
         id: deployment
         uses: actions/deploy-pages@v4

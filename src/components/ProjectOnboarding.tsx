@@ -7,6 +7,7 @@ interface ProjectOnboardingProps {
   project: ProjectData;
   projectFilePath?: string;
   requiresDirectory: boolean;
+  webMode: boolean;
   updateProject: (updater: (project: ProjectData) => ProjectData) => void;
   onChooseDirectory: () => Promise<boolean>;
   onFinish: () => void;
@@ -19,7 +20,7 @@ const steps = [
   { title: "저장 위치", description: ".barun 파일을 저장할 폴더와 이름을 선택합니다." },
 ];
 
-export default function ProjectOnboarding({ project, projectFilePath, requiresDirectory, updateProject, onChooseDirectory, onFinish, onOpen }: ProjectOnboardingProps) {
+export default function ProjectOnboarding({ project, projectFilePath, requiresDirectory, webMode, updateProject, onChooseDirectory, onFinish, onOpen }: ProjectOnboardingProps) {
   const [step, setStep] = useState(0);
   const [choosingStorage, setChoosingStorage] = useState(false);
   const meta = project.meta;
@@ -34,6 +35,9 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
   const duesTotal = Math.max(0, project.duesPerPerson) * Math.max(0, meta.headcount);
   const totalIncome = duesTotal + incomeAmount("teamSupport") + incomeAmount("flowing");
   const storageReady = !requiresDirectory || Boolean(projectFilePath);
+  const visibleSteps = webMode
+    ? steps.map((item, index) => index === 2 ? { title: "저장과 백업", description: "자동 복구와 .barun 백업을 확인합니다." } : item)
+    : steps;
   const chooseStorage = async () => {
     setChoosingStorage(true);
     try {
@@ -48,7 +52,7 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
     <section className="onboarding-card">
       <div className="onboarding-aside">
         <div><span className="eyebrow">NEW PROJECT</span><h1>회계 프로젝트를<br />함께 준비해 볼게요.</h1><p>지금 입력한 내용은 나중에 언제든 수정할 수 있습니다.</p></div>
-        <ol>{steps.map((item, index) => <li className={`${index === step ? "active" : ""} ${index < step ? "done" : ""}`} key={item.title}><span>{index < step ? <Check size={15} /> : index + 1}</span><div><strong>{item.title}</strong><small>{item.description}</small></div></li>)}</ol>
+        <ol>{visibleSteps.map((item, index) => <li className={`${index === step ? "active" : ""} ${index < step ? "done" : ""}`} key={item.title}><span>{index < step ? <Check size={15} /> : index + 1}</span><div><strong>{item.title}</strong><small>{item.description}</small></div></li>)}</ol>
         <button className="onboarding-open" onClick={onOpen}><FolderOpen size={18} /><span><strong>기존 .barun 프로젝트 열기</strong><small>저장해 둔 *.barun 파일을 선택합니다</small></span></button>
       </div>
       <div className="onboarding-content">
@@ -74,7 +78,21 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
           </div>
           <div className="onboarding-total"><span>현재 총수입</span><strong>{totalIncome.toLocaleString("ko-KR")}원</strong></div>
         </>}
-        {step === 2 && <>
+        {step === 2 && webMode && <>
+          <div className="onboarding-heading"><span>3 / 3 · 저장과 백업</span><h2>작업은 이 기기에 자동 복구됩니다.</h2><p>서버로 전송하지 않고 브라우저 안에 저장합니다. 다른 기기로 옮길 때는 <strong>.barun 백업 파일</strong> 하나만 보관하세요.</p></div>
+          <div className="web-storage-summary">
+            <span className="storage-destination-icon"><Check size={27} /></span>
+            <div><span>브라우저 자동 복구</span><strong>입력 내용과 첨부 이미지까지 이 기기에 저장</strong><small>브라우저 데이터를 지우기 전까지 다음 방문 때 자동으로 이어서 시작합니다.</small></div>
+          </div>
+          <button className="web-backup-action" onClick={chooseStorage} disabled={choosingStorage}>
+            <FolderOpen size={22} />
+            <span><strong>{choosingStorage ? "백업 파일 만드는 중" : ".barun 백업 파일 미리 저장"}</strong><small>선택 사항 · 모든 이미지가 들어 있는 파일 하나를 다운로드합니다.</small></span>
+            <ArrowRight size={17} />
+          </button>
+          <div className="onboarding-output-preview"><div><FileSpreadsheet size={22} /><span><strong>회계보고서 Excel</strong><small>프로젝트에서 생성</small></span></div><ArrowRight size={16} /><div><ReceiptText size={22} /><span><strong>영수증철 PDF / Word</strong><small>원하는 형식으로 생성</small></span></div></div>
+          <div className="safe-note"><Sparkles size={18} /><span><strong>주요 작업 뒤에는 .barun 백업을 권장합니다.</strong><small>홈 화면 위쪽의 ‘.barun 백업 저장’을 누르면 언제든 새 백업 파일을 받을 수 있습니다.</small></span></div>
+        </>}
+        {step === 2 && !webMode && <>
           <div className="onboarding-heading"><span>3 / 3 · 저장 위치</span><h2>프로젝트 파일을 어디에 저장할까요?</h2><p>아래 버튼을 누르면 저장할 폴더와 <strong>.barun 파일 이름</strong>을 고르는 창이 열립니다.</p></div>
           <div className={`storage-destination ${projectFilePath ? "selected" : ""}`}>
             <span className="storage-destination-icon">{projectFilePath ? <Check size={27} /> : <FolderOpen size={27} />}</span>

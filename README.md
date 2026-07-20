@@ -1,8 +1,10 @@
 # 아웃리치 회계 도우미
 
-공식 회계 Excel 템플릿과 회계교육자료의 규칙을 바탕으로 만든 Windows/macOS용 로컬 데스크톱 앱입니다. 프로젝트 데이터와 첨부파일은 하나의 로컬 `.barun` 파일에 저장되며 서버 데이터베이스는 사용하지 않습니다.
+공식 회계 Excel 템플릿과 회계교육자료의 규칙을 바탕으로 만든 로컬 우선 웹앱·Windows/macOS 데스크톱 앱입니다. 프로젝트 데이터와 첨부파일은 하나의 `.barun` 파일로 백업할 수 있으며 서버 데이터베이스는 사용하지 않습니다.
 
 다운로드 홈페이지: [https://tangeroooo.github.io/accounting-assistant/](https://tangeroooo.github.io/accounting-assistant/)
+
+웹앱 바로 시작: [https://tangeroooo.github.io/accounting-assistant/app/](https://tangeroooo.github.io/accounting-assistant/app/)
 
 ## 구현된 핵심 규칙
 
@@ -21,7 +23,7 @@
 - 첫 번째 팀별사역비 행의 비고에는 지원금과 회비 충당액을 원본 예시 형식으로 자동 작성합니다. 사용자가 비고를 수정하거나 비워 두면 수동 내용을 보존하며, `지원금·회비 비고 자동 작성` 버튼으로 다시 자동 모드로 바꿀 수 있습니다.
 - 금전출납부의 내용은 내보낼 때 `[교통비]`, `[팀별사역비]`처럼 공식 항목 태그를 자동으로 붙입니다. 주유비 실물 원본, 여행자보험 증빙, 교역자·선교사 선물 분류, 국내 헌금 30만원 기준도 자동 검토합니다.
 - 회비는 1인당 회비 × 인원수로 계산합니다.
-- 새 프로젝트는 기본정보 → 수입 → `.barun` 파일 저장 순서로 안내하며, 파일을 만든 뒤 변경사항을 자동 저장합니다.
+- 새 프로젝트는 기본정보 → 수입 → 저장·백업 순서로 안내합니다. 웹앱은 이미지까지 브라우저에 자동 복구하고 `.barun` 백업을 내려받으며, 데스크톱 앱은 선택한 `.barun` 파일에 자동 저장합니다.
 - 개인 선결제자는 설정에서 미리 만들지 않고 지출 입력 중 이름을 적으면 자동 등록됩니다.
 - 진행 현황에서 회계 입력·검토 → 영수증철 편집 → 정산 확인 순서를 안내합니다.
 - 회계보고서 Excel과 영수증철 PDF 버튼은 프로젝트 열기·저장 버튼 옆에 있으며, 영수증철에는 별도 인쇄 버튼이 없습니다.
@@ -29,7 +31,7 @@
 
 ## 프로젝트 파일
 
-`.barun`은 `manifest.json`과 영수증·증빙 이미지를 한 파일에 담는 ZIP 기반 문서 패키지입니다. 다른 컴퓨터에서는 `.barun` 파일 하나만 옮겨 열 수 있습니다. 저장할 때는 같은 폴더의 임시 파일을 완성한 뒤 기존 파일과 교체하므로 저장 도중 중단되어도 이전 파일을 바로 덮어쓰지 않습니다. 업데이트 직전에는 같은 폴더에 `프로젝트명-업데이트전-백업.barun`도 만듭니다. 자세한 형식은 [docs/barun-project-format.md](docs/barun-project-format.md)를 참고하세요. 기존 `회계프로젝트.json`은 열기만 지원하며 다음 저장부터 `.barun`으로 전환합니다.
+`.barun`은 `manifest.json`과 영수증·증빙 이미지를 한 파일에 담는 ZIP 기반 문서 패키지입니다. 다른 컴퓨터나 브라우저에서는 `.barun` 파일 하나만 옮겨 열 수 있습니다. 웹앱의 자동 복구본은 해당 브라우저 안에 있으므로 브라우저 데이터를 지우기 전 중요한 시점마다 `.barun` 백업을 내려받아야 합니다. 데스크톱 앱은 같은 폴더의 임시 파일을 완성한 뒤 기존 파일과 교체하며 업데이트 직전에는 `프로젝트명-업데이트전-백업.barun`도 만듭니다. 자세한 형식은 [docs/barun-project-format.md](docs/barun-project-format.md)를 참고하세요. 기존 `회계프로젝트.json`은 열기만 지원하며 다음 저장부터 `.barun`으로 전환합니다.
 
 ## 로컬 개발
 
@@ -38,6 +40,7 @@ npm install
 npm run tauri -- dev
 npm test
 npm run build
+npm run build:web
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
@@ -65,6 +68,8 @@ accounting-assistant/
 ├── src/                 React UI와 회계 로직
 ├── src-tauri/           Rust/Tauri 데스크톱 백엔드
 ├── resources/           앱이 복사해 사용하는 보존용 Excel 템플릿
+├── website/             GitHub Pages 홈페이지와 초보자 가이드
+├── public/              웹앱 PWA 매니페스트와 아이콘
 ├── reference/           사용자 제공 교육자료 원본(Git 제외)
 └── artifacts/           테스트·렌더링·설치본 검증 결과(Git 제외)
 ```
