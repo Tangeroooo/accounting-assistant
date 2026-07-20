@@ -98,6 +98,11 @@ export async function saveProjectPackage(project: ProjectData, packagePath: stri
   await writeAttachmentBytes(packagePath, await packageBytes(project));
 }
 
+export async function backupProjectPackageForUpdate(packagePath: string) {
+  if (!isTauri()) return null;
+  return invoke<string>("backup_project_file", { path: packagePath });
+}
+
 export async function saveProjectPackageAs(project: ProjectData, defaultName: string) {
   if (!isTauri()) return null;
   const packagePath = await save({

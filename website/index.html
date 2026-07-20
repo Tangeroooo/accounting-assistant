@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="회계가 처음이어도 영수증 정리부터 회계보고서 Excel, 영수증철 PDF·Word까지 한 번에 만드는 Windows·macOS 로컬 앱" />
+    <meta name="theme-color" content="#17243e" />
+    <meta property="og:title" content="바른장부 — 아웃리치 회계 도우미" />
+    <meta property="og:description" content="영수증부터 회계보고서까지, 차근차근 완성하세요." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://tangeroooo.github.io/accounting-assistant/assets/app-overview.png" />
+    <title>바른장부 — 아웃리치 회계 도우미</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./site.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="바른장부 홈">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M7 7.5c3.4-.7 6.2.1 9 2.1 2.8-2 5.6-2.8 9-2.1v17c-3.4-.7-6.2.1-9 2.1-2.8-2-5.6-2.8-9-2.1z"/><path d="M16 9.6v17"/></svg>
+        </span>
+        <span><strong>바른장부</strong><small>아웃리치 회계 도우미</small></span>
+      </a>
+      <nav aria-label="주요 메뉴">
+        <a href="#features">주요 기능</a>
+        <a href="#screens">화면 보기</a>
+        <a href="#safety">프로젝트 보관</a>
+        <a class="nav-download" href="#download">다운로드</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero section-shell">
+        <div class="hero-copy">
+          <span class="eyebrow"><i></i> WINDOWS · macOS 로컬 앱</span>
+          <h1>영수증부터 보고서까지,<br /><em>차근차근 완성하세요.</em></h1>
+          <p>회계가 처음이어도 괜찮습니다. 수입과 지출을 흐름대로 입력하면 검산하고, 공식 Excel 회계보고서와 보기 좋은 영수증철까지 만들어 드립니다.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#download">내 컴퓨터용 다운로드</a>
+            <a class="button secondary" href="#screens">앱 화면 먼저 보기</a>
+          </div>
+          <ul class="hero-points" aria-label="제품 특징">
+            <li><span>✓</span> 서버·데이터베이스 없음</li>
+            <li><span>✓</span> 이미지까지 .barun 하나에 보관</li>
+            <li><span>✓</span> 서명 검증 자동 업데이트</li>
+          </ul>
+        </div>
+        <div class="hero-visual">
+          <div class="app-frame">
+            <div class="window-bar"><i></i><i></i><i></i><span>바른장부</span></div>
+            <img src="./assets/app-overview.png" alt="바른장부 진행 현황 화면" />
+          </div>
+          <div class="floating-note note-save"><b>자동 저장됨</b><span>이미지를 포함한 .barun</span></div>
+          <div class="floating-note note-export"><b>산출물 완성</b><span>Excel · PDF · Word</span></div>
+        </div>
+      </section>
+
+      <section class="trust-strip" aria-label="핵심 가치">
+        <div><strong>로컬 우선</strong><span>내 컴퓨터에서만 처리</span></div>
+        <div><strong>원본 서식 보존</strong><span>공식 Excel 양식 그대로</span></div>
+        <div><strong>실시간 검산</strong><span>입력하면서 차액 확인</span></div>
+        <div><strong>이동 가능한 프로젝트</strong><span>.barun 파일 하나면 충분</span></div>
+      </section>
+
+      <section class="download-section section-shell" id="download">
+        <div class="section-heading centered">
+          <span class="eyebrow">DOWNLOAD</span>
+          <h2>내 컴퓨터에 맞는 버전을 받으세요</h2>
+          <p>설치 파일은 공식 GitHub Releases에서 안전하게 내려받습니다.</p>
+          <div class="release-status"><span class="status-dot"></span><strong data-release-version>최신 버전 확인 중</strong><span data-release-date></span></div>
+        </div>
+
+        <div class="download-grid">
+          <article class="download-card featured">
+            <span class="recommended">대부분의 최신 Mac</span>
+            <div class="os-icon apple" aria-hidden="true">●</div>
+            <div><span class="card-kicker">macOS · Apple Silicon</span><h3>M1 · M2 · M3 · M4 Mac</h3><p>2020년 이후 출시된 대부분의 Mac에 권장합니다.</p></div>
+            <a class="download-link" data-download="mac-arm" href="https://github.com/Tangeroooo/accounting-assistant/releases/latest">Apple Silicon용 받기 <span>↓</span></a>
+            <small data-asset-note="mac-arm">DMG 설치 이미지</small>
+          </article>
+
+          <article class="download-card">
+            <div class="os-icon apple" aria-hidden="true">●</div>
+            <div><span class="card-kicker">macOS · Intel</span><h3>Intel 프로세서 Mac</h3><p>2020년 이전 Intel 기반 Mac을 위한 버전입니다.</p></div>
+            <a class="download-link" data-download="mac-intel" href="https://github.com/Tangeroooo/accounting-assistant/releases/latest">Intel Mac용 받기 <span>↓</span></a>
+            <small data-asset-note="mac-intel">DMG 설치 이미지</small>
+          </article>
+
+          <article class="download-card windows-card">
+            <div class="os-icon windows" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div><span class="card-kicker">Windows · x64</span><h3>Windows 10 · 11</h3><p>일반적인 64비트 Windows PC를 지원합니다.</p></div>
+            <a class="download-link" data-download="windows" href="https://github.com/Tangeroooo/accounting-assistant/releases/latest">Windows용 받기 <span>↓</span></a>
+            <small data-asset-note="windows">EXE 설치 프로그램</small>
+          </article>
+        </div>
+
+        <div class="install-notice">
+          <span aria-hidden="true">i</span>
+          <p><strong>첫 실행 때 운영체제 보안 안내가 나올 수 있습니다.</strong> 현재 시험 배포본은 Apple 공증 및 Windows 게시자 인증서를 적용하기 전 단계입니다. 반드시 이 공식 페이지에서 내려받은 파일인지 확인한 뒤 실행해 주세요.</p>
+          <a href="https://github.com/Tangeroooo/accounting-assistant/releases/latest" target="_blank" rel="noreferrer">모든 릴리스 파일 보기 ↗</a>
+        </div>
+      </section>
+
+      <section class="features-section" id="features">
+        <div class="section-shell">
+          <div class="section-heading">
+            <span class="eyebrow">ONE CLEAR FLOW</span>
+            <h2>회계 순서를 앱이 먼저 안내합니다</h2>
+            <p>메뉴를 외우지 않아도 수입 입력부터 정산 확인까지 자연스럽게 이어집니다.</p>
+          </div>
+          <div class="feature-grid">
+            <article><span class="feature-number">01</span><div class="feature-icon">₩</div><h3>수입·지출과 실시간 검산</h3><p>회비 × 인원수, 팀별사역지원금, 지출을 한 화면에서 입력하고 차액을 즉시 확인합니다.</p></article>
+            <article><span class="feature-number">02</span><div class="feature-icon">▦</div><h3>공식 Excel 자동 작성</h3><p>항목 순서와 원본 서식을 보존하면서 지출을 날짜순으로 정리하고 영수증 번호를 맞춥니다.</p></article>
+            <article><span class="feature-number">03</span><div class="feature-icon">▧</div><h3>유연한 영수증철 편집</h3><p>그림 자르기·크기 조절·자동 흐름 배치와 실물 영수증 부착 공간을 지원합니다.</p></article>
+            <article><span class="feature-number">04</span><div class="feature-icon">✓</div><h3>누락을 모아 보는 자동 검토</h3><p>증빙 누락과 회계 규칙을 건별 스팸 없이 요약하고, 확인해야 할 항목을 알려줍니다.</p></article>
+            <article><span class="feature-number">05</span><div class="feature-icon">↻</div><h3>개인별 정산 확인</h3><p>결제자 이름은 내부 편의 정보로만 관리하고 각 사람에게 돌려줄 금액을 검산합니다.</p></article>
+            <article><span class="feature-number">06</span><div class="feature-icon">↓</div><h3>PDF·Word 영수증철</h3><p>편집 결과를 PDF 또는 개별 오브젝트가 유지되는 Word 문서로 내보낼 수 있습니다.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="screens-section section-shell" id="screens">
+        <div class="section-heading centered">
+          <span class="eyebrow">APP PREVIEW</span>
+          <h2>필요한 정보는 넓고 명확하게</h2>
+          <p>화면을 선택하면 크게 볼 수 있습니다.</p>
+        </div>
+        <div class="screens-grid">
+          <button class="screenshot-card wide" data-image="./assets/app-overview.png" data-alt="진행 현황 화면 크게 보기">
+            <img src="./assets/app-overview.png" alt="수입, 지출, 차액과 진행 순서를 보여주는 진행 현황 화면" />
+            <span><b>진행 현황</b><small>다음에 할 일을 한눈에</small></span>
+          </button>
+          <button class="screenshot-card" data-image="./assets/app-accounting.png" data-alt="회계 입력 검토 화면 크게 보기">
+            <img src="./assets/app-accounting.png" alt="수입과 실시간 검산을 함께 보여주는 회계 입력 검토 화면" />
+            <span><b>회계 입력·검토</b><small>입력과 검산을 같은 화면에서</small></span>
+          </button>
+          <button class="screenshot-card" data-image="./assets/app-receipts.png" data-alt="영수증철 편집 화면 크게 보기">
+            <img src="./assets/app-receipts.png" alt="영수증 그림과 실물 부착 공간을 배치하는 영수증철 편집 화면" />
+            <span><b>영수증철 편집</b><small>그림처럼 직접 보고 편집</small></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="safety-section" id="safety">
+        <div class="section-shell safety-layout">
+          <div class="package-visual" aria-hidden="true">
+            <div class="file-card back"></div>
+            <div class="file-card front"><span class="brand-mark"><svg viewBox="0 0 32 32"><path d="M7 7.5c3.4-.7 6.2.1 9 2.1 2.8-2 5.6-2.8 9-2.1v17c-3.4-.7-6.2.1-9 2.1-2.8-2-5.6-2.8-9-2.1z"/><path d="M16 9.6v17"/></svg></span><b>강릉팀.barun</b><small>입력 내용 · 영수증 · 편집값</small></div>
+            <div class="package-chip chip-one">영수증 이미지</div><div class="package-chip chip-two">회계 입력</div><div class="package-chip chip-three">안전한 백업</div>
+          </div>
+          <div class="safety-copy">
+            <span class="eyebrow">LOCAL & PORTABLE</span>
+            <h2>프로젝트 파일 하나만<br />안전하게 챙기세요</h2>
+            <p><code>.barun</code> 파일에는 회계 입력 내용뿐 아니라 모든 영수증·주유비 증빙 이미지와 편집 정보가 실제로 포함됩니다. 서버에는 올리지 않습니다.</p>
+            <ul>
+              <li><span>✓</span><div><b>다른 컴퓨터에서도 그대로</b><small>.barun 파일 하나를 옮겨 열면 됩니다.</small></div></li>
+              <li><span>✓</span><div><b>중단에 강한 저장</b><small>임시 파일을 완성한 뒤 기존 프로젝트와 교체합니다.</small></div></li>
+              <li><span>✓</span><div><b>업데이트 전 자동 백업</b><small>문제가 생겨도 이전 버전 앱에서 복구할 파일을 남깁니다.</small></div></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="steps-section section-shell">
+        <div class="section-heading centered"><span class="eyebrow">GET STARTED</span><h2>세 단계면 시작할 수 있어요</h2></div>
+        <ol class="steps">
+          <li><span>1</span><div><h3>운영체제에 맞게 설치</h3><p>Apple Silicon, Intel Mac, Windows 중 하나를 선택합니다.</p></div></li>
+          <li><span>2</span><div><h3>프로젝트 파일 위치 선택</h3><p>문서나 iCloud·OneDrive 폴더에 .barun 파일을 만듭니다.</p></div></li>
+          <li><span>3</span><div><h3>수입부터 순서대로 입력</h3><p>앱의 안내를 따라 지출과 영수증을 등록하고 산출물을 저장합니다.</p></div></li>
+        </ol>
+      </section>
+
+      <section class="faq-section section-shell">
+        <div class="section-heading centered"><span class="eyebrow">FAQ</span><h2>자주 묻는 질문</h2></div>
+        <div class="faq-list">
+          <details><summary>인터넷이 없어도 사용할 수 있나요?<span>＋</span></summary><p>네. 프로젝트 작성, 검산, Excel과 영수증철 생성은 모두 로컬에서 작동합니다. 새 버전 확인과 다운로드에만 인터넷이 필요합니다.</p></details>
+          <details><summary>앱을 다시 설치하면 프로젝트가 사라지나요?<span>＋</span></summary><p>아니요. 사용자가 선택한 위치의 .barun 파일은 앱 설치 영역과 분리되어 있습니다. 새로 설치한 앱에서 같은 파일을 열면 됩니다.</p></details>
+          <details><summary>한글 Excel과 영수증철 양식이 바뀌지는 않나요?<span>＋</span></summary><p>제공된 공식 템플릿 사본을 읽어 결과를 만들며 템플릿 자체에는 쓰지 않습니다. 금전출납부는 기존 서식을 유지하고 필요한 행만 같은 서식으로 늘립니다.</p></details>
+          <details><summary>새 버전은 어떻게 설치하나요?<span>＋</span></summary><p>앱이 GitHub Releases에서 새 버전을 확인해 알려줍니다. 프로젝트와 업데이트 전 백업을 저장한 뒤 서명이 확인된 파일만 설치합니다.</p></details>
+        </div>
+      </section>
+
+      <section class="final-cta">
+        <div><span class="eyebrow">READY WHEN YOU ARE</span><h2>회계를 정리할 시간,<br />바른장부와 시작하세요.</h2><a class="button light" href="#download">무료로 다운로드</a></div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 7.5c3.4-.7 6.2.1 9 2.1 2.8-2 5.6-2.8 9-2.1v17c-3.4-.7-6.2.1-9 2.1-2.8-2-5.6-2.8-9-2.1z"/><path d="M16 9.6v17"/></svg></span><span><strong>바른장부</strong><small>아웃리치 회계 도우미</small></span></div>
+      <p>회계 데이터와 영수증을 서버에 저장하지 않는 로컬 데스크톱 앱</p>
+      <a href="https://github.com/Tangeroooo/accounting-assistant" target="_blank" rel="noreferrer">GitHub 저장소 ↗</a>
+    </footer>
+
+    <dialog id="screenshot-dialog" aria-label="앱 화면 크게 보기">
+      <button class="dialog-close" aria-label="큰 화면 닫기">×</button>
+      <img src="./assets/app-overview.png" alt="앱 화면 크게 보기" />
+    </dialog>
+  </body>
+</html>

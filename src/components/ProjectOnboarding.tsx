@@ -55,13 +55,13 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
         {step === 0 && <>
           <div className="onboarding-heading"><span>1 / 3</span><h2>어느 팀의 회계인가요?</h2><p>공동체와 팀 이름은 공식 보고서 제목에 사용됩니다.</p></div>
           <div className="onboarding-fields">
-            <OnboardingField label="공동체" value={meta.community} placeholder="예: 여호수아" onChange={(value) => setMeta("community", value)} />
+            <OnboardingField label="공동체" value={meta.community} placeholder="예: SNS CROSS" onChange={(value) => setMeta("community", value)} />
             <OnboardingField label="팀 이름" value={meta.teamName} placeholder="예: 강릉팀" onChange={(value) => setMeta("teamName", value)} />
             <OnboardingField label="그룹" value={meta.groupName} placeholder="선택 입력" onChange={(value) => setMeta("groupName", value)} />
             <OnboardingField label="사역지" value={meta.destination} placeholder="예: 강원도 강릉" onChange={(value) => setMeta("destination", value)} />
             <OnboardingField label="인원수" type="number" value={String(meta.headcount || "")} placeholder="예: 12" onChange={(value) => setMeta("headcount", Math.max(0, Number(value) || 0))} />
             <OnboardingField label="출발일" type="date" value={meta.startDate} onChange={(value) => setMeta("startDate", value)} />
-            <OnboardingField label="귀국일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} />
+            <OnboardingField label="도착일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} />
           </div>
           {!basicReady && <p className="onboarding-hint">공동체와 팀 이름만 입력하면 다음으로 갈 수 있습니다.</p>}
         </>}

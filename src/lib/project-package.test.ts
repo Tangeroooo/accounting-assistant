@@ -33,7 +33,7 @@ describe(".barun 프로젝트 패키지", () => {
       category: "transport",
       kind: "fuel-calculation",
       title: "주유비 산정 증빙",
-      attachments: [],
+      attachments: [{ id: "fuel", relativePath: "attachments/fuel.png", originalName: "fuel.png", mimeType: "image/png", kind: "other" }],
       offlineHolders: [{ id: "fuel-holder", widthMm: 92, heightMm: 68 }],
     }];
     const bytes = await createBarunPackage(project, async () => new Uint8Array([1, 2, 3]));
@@ -43,6 +43,7 @@ describe(".barun 프로젝트 패키지", () => {
     expect(manifest.format).toBe(BARUN_FORMAT);
     expect(manifest.project.projectDirectory).toBeUndefined();
     expect(await zip.file("attachments/receipt.png")!.async("uint8array")).toEqual(new Uint8Array([1, 2, 3]));
+    expect(await zip.file("attachments/fuel.png")!.async("uint8array")).toEqual(new Uint8Array([1, 2, 3]));
 
     const parsed = await parseBarunPackage(bytes);
     expect(parsed.project.meta.teamName).toBe("강릉팀");
@@ -50,6 +51,36 @@ describe(".barun 프로젝트 패키지", () => {
     expect(parsed.project.expenses[0].offlineHolders).toEqual([{ id: "holder", widthMm: 55, heightMm: 100 }]);
     expect(parsed.project.categoryEvidence[0].offlineHolders).toEqual([{ id: "fuel-holder", widthMm: 92, heightMm: 68 }]);
     expect(parsed.assets.get("attachments/receipt.png")).toEqual(new Uint8Array([1, 2, 3]));
+    expect(parsed.assets.get("attachments/fuel.png")).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it("프로젝트가 참조하는 첨부 이미지가 빠진 패키지는 열지 않는다", async () => {
+    const project = createEmptyProject();
+    project.expenses = [{
+      id: "expense",
+      createdOrder: 1,
+      category: "transport",
+      date: "2026-07-01",
+      content: "버스",
+      amount: 10_000,
+      note: "",
+      receiptMode: "online-printable",
+      originalConfirmed: false,
+      attachments: [{ id: "receipt", relativePath: "attachments/receipt.png", originalName: "receipt.png", mimeType: "image/png", kind: "online-receipt" }],
+      offlineHolders: [],
+      itemDetails: "",
+      isFuel: false,
+      paymentSource: "team",
+      settlementTargetAmount: 0,
+      settledAmount: 0,
+      settlementStatus: "not-applicable",
+    }];
+    const valid = await createBarunPackage(project, async () => new Uint8Array([1, 2, 3]));
+    const zip = await JSZip.loadAsync(valid);
+    zip.remove("attachments/receipt.png");
+    const missingAttachment = await zip.generateAsync({ type: "uint8array" });
+
+    await expect(parseBarunPackage(missingAttachment)).rejects.toThrow("첨부 이미지 1개");
   });
 
   it("참조된 첨부 경로를 중복 없이 수집하고 위험한 경로는 제외한다", () => {

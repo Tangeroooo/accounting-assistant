@@ -27,15 +27,34 @@
       "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https:; worker-src 'self' blob:; script-src 'self' 'unsafe-eval'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["../resources/accounting-template.xlsx"],
+    "createUpdaterArtifacts": true,
+    "resources": [
+      "../resources/accounting-template.xlsx"
+    ],
     "category": "Finance",
-    "shortDescription": "회계보고서와 영수증철을 로컬에서 작성합니다."
+    "shortDescription": "회계보고서와 영수증철을 로컬에서 작성합니다.",
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwQTMwNjVDMzdDQTJFOTcKUldTWExzbzNYQWFqb014QjNMOTVJcHdkSFZkSHg2U1JqSlVuWTVrRm5OOHp5RWl0TzVvSWZKVmIK",
+      "endpoints": [
+        "https://github.com/Tangeroooo/accounting-assistant/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

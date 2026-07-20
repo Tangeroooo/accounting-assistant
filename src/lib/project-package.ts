@@ -57,5 +57,10 @@ export async function parseBarunPackage(bytes: Uint8Array): Promise<ParsedBarunP
     if (entry.dir || !entry.name.startsWith("attachments/") || entry.name.includes("..")) continue;
     assets.set(entry.name, await entry.async("uint8array"));
   }
+  const missingAssets = collectProjectAssetPaths(manifest.project as ProjectData)
+    .filter((relativePath) => !assets.has(relativePath));
+  if (missingAssets.length > 0) {
+    throw new Error(`바른장부 프로젝트에서 첨부 이미지 ${missingAssets.length}개를 찾을 수 없습니다.`);
+  }
   return { project: manifest.project, assets };
 }

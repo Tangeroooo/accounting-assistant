@@ -59,6 +59,7 @@ import {
 } from "./lib/accounting";
 import {
   attachmentAbsolutePath,
+  backupProjectPackageForUpdate,
   chooseProjectFile,
   importAttachments,
   importClipboardAttachment,
@@ -74,6 +75,7 @@ import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DE
 import { createReceiptBookDocx } from "./lib/receipt-docx";
 import { createReceiptBookPdf, renderReceiptBookPageCanvases } from "./lib/receipt-pdf";
 import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
+import AppUpdater from "./components/AppUpdater";
 import ProjectOnboarding from "./components/ProjectOnboarding";
 
 type ViewId = "overview" | "accounting" | "receipts" | "settlements" | "settings";
@@ -100,7 +102,7 @@ const sampleProject = (): ProjectData => {
   return applyDerivedState({
     ...createEmptyProject(),
     meta: {
-      community: "여호수아",
+      community: "SNS CROSS",
       groupName: "믿음그룹",
       teamName: "강릉팀",
       destination: "강원도 강릉",
@@ -127,13 +129,13 @@ const sampleProject = (): ProjectData => {
       {
         id: crypto.randomUUID(), createdOrder: 1, category: "transport", date: "2026-07-27",
         content: "강릉 왕복 주유", amount: 85_000, note: "", receiptMode: "offline-original",
-        originalConfirmed: true, attachments: [], itemDetails: "", isFuel: true, paymentSource: "personal",
+        originalConfirmed: true, attachments: [], offlineHolders: [{ id: "sample-transport-holder", widthMm: 82, heightMm: 62 }], itemDetails: "", isFuel: true, paymentSource: "personal",
         payerId: "person-1", settlementTargetAmount: 85_000, settledAmount: 0, settlementStatus: "pending",
       },
       {
         id: crypto.randomUUID(), createdOrder: 2, category: "meals", date: "2026-07-27",
         content: "첫날 저녁 식사", amount: 144_000, note: "", receiptMode: "offline-original",
-        originalConfirmed: true, attachments: [], mealHeadcount: 12, itemDetails: "", isFuel: false,
+        originalConfirmed: true, attachments: [], offlineHolders: [{ id: "sample-meal-holder", widthMm: 82, heightMm: 62 }], mealHeadcount: 12, itemDetails: "", isFuel: false,
         paymentSource: "personal", payerId: "person-2", settlementTargetAmount: 144_000,
         settledAmount: 44_000, settlementStatus: "partial",
       },
@@ -144,7 +146,17 @@ const sampleProject = (): ProjectData => {
         paymentSource: "team", settlementTargetAmount: 0, settledAmount: 0, settlementStatus: "not-applicable",
       },
     ],
-    categoryEvidence: [],
+    categoryEvidence: [{
+      id: "sample-fuel-evidence",
+      category: "transport",
+      kind: "fuel-calculation",
+      title: "교통비 공통 주유비 산정 증빙",
+      attachments: [],
+      offlineHolders: [
+        { id: "sample-fuel-holder-1", widthMm: 32, heightMm: 62 },
+        { id: "sample-fuel-holder-2", widthMm: 82, heightMm: 62 },
+      ],
+    }],
     receiptNumbersFinalized: false,
     updatedAt: now,
   });
@@ -409,6 +421,29 @@ function App() {
               {saveState === "saving" ? <LoaderCircle className="spin" size={17} /> : saveState === "saved" ? <Check size={17} /> : <Save size={17} />}
               {!projectFilePath ? "프로젝트 저장" : saveState === "saving" ? "자동 저장 중" : saveState === "saved" ? "자동 저장됨" : saveState === "error" ? "저장 다시 시도" : "지금 저장"}
             </button>
+            <AppUpdater beforeInstall={async () => {
+              setSaveState("saving");
+              let savedProject = project;
+              let savedPath = projectFilePath;
+              if (!savedPath) {
+                const saved = await saveProjectPackageAs(project, `${project.meta.teamName || "새 회계 프로젝트"}.barun`);
+                if (!saved) {
+                  setSaveState("idle");
+                  throw new Error("프로젝트 저장이 취소되었습니다.");
+                }
+                savedProject = applyDerivedState(saved.project);
+                savedPath = saved.packagePath;
+                setProject(savedProject);
+                setProjectFilePath(savedPath);
+              } else {
+                await saveProjectPackage(project, savedPath);
+              }
+              await backupProjectPackageForUpdate(savedPath);
+              const serialized = JSON.stringify(savedProject);
+              localStorage.setItem("accounting-assistant-project", serialized);
+              persistedSnapshotRef.current = serialized;
+              setSaveState("saved");
+            }} />
             <span className="top-action-divider" />
             <button className="button output-button excel" onClick={handleExcelExport} disabled={outputBusy !== null} title={issues.some((issue) => issue.severity === "error") ? "검토 중인 상태도 중간 확인용 Excel로 저장할 수 있습니다." : undefined}><FileSpreadsheet size={17} /> {outputBusy === "excel" ? "Excel 생성 중" : "Excel 저장"}</button>
             <ReceiptExportControl format={receiptExportFormat} onFormatChange={setReceiptExportFormat} onExport={handleReceiptExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} compact />
@@ -1016,7 +1051,7 @@ function SettingsView({ project, projectFilePath, updateProject }: { project: Pr
   const meta = project.meta;
   const setMeta = (key: keyof ProjectData["meta"], value: string | number) => updateProject((current) => ({ ...current, meta: { ...current.meta, [key]: value } }));
   return <section className="page"><PageHeading eyebrow="PROJECT SETTINGS" title="프로젝트 설정" description="팀 기본정보, .barun 프로젝트 파일과 내부 정산 이름을 관리합니다. 수입은 회계 입력·검토 화면에서 관리합니다." />
-    <div className="settings-grid"><div className="panel form-panel"><div className="panel-heading"><div><span className="eyebrow">BASIC INFO</span><h2>팀 기본 정보</h2></div></div><div className="field-grid"><Field label="공동체" value={meta.community} onChange={(value) => setMeta("community", value)} /><Field label="그룹" value={meta.groupName} onChange={(value) => setMeta("groupName", value)} /><Field label="팀 이름" value={meta.teamName} onChange={(value) => setMeta("teamName", value)} /><Field label="사역지" value={meta.destination} onChange={(value) => setMeta("destination", value)} /><Field label="출발일" type="date" value={meta.startDate} onChange={(value) => setMeta("startDate", value)} /><Field label="귀국일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} /><Field label="인원" type="number" value={String(meta.headcount)} onChange={(value) => setMeta("headcount", Number(value))} /><Field label="제출일" type="date" value={meta.submissionDate} onChange={(value) => setMeta("submissionDate", value)} /><Field label="담당 교역자" value={meta.pastorName} onChange={(value) => setMeta("pastorName", value)} /><Field label="팀장" value={meta.leaderName} onChange={(value) => setMeta("leaderName", value)} /><Field label="팀장 연락처" value={meta.leaderPhone} onChange={(value) => setMeta("leaderPhone", value)} /><Field label="회계" value={meta.accountantName} onChange={(value) => setMeta("accountantName", value)} /><Field label="회계 연락처" value={meta.accountantPhone} onChange={(value) => setMeta("accountantPhone", value)} /></div></div>
+    <div className="settings-grid"><div className="panel form-panel"><div className="panel-heading"><div><span className="eyebrow">BASIC INFO</span><h2>팀 기본 정보</h2></div></div><div className="field-grid"><Field label="공동체" value={meta.community} onChange={(value) => setMeta("community", value)} /><Field label="그룹" value={meta.groupName} onChange={(value) => setMeta("groupName", value)} /><Field label="팀 이름" value={meta.teamName} onChange={(value) => setMeta("teamName", value)} /><Field label="사역지" value={meta.destination} onChange={(value) => setMeta("destination", value)} /><Field label="출발일" type="date" value={meta.startDate} onChange={(value) => setMeta("startDate", value)} /><Field label="도착일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} /><Field label="인원" type="number" value={String(meta.headcount)} onChange={(value) => setMeta("headcount", Number(value))} /><Field label="제출일" type="date" value={meta.submissionDate} onChange={(value) => setMeta("submissionDate", value)} /><Field label="담당 교역자" value={meta.pastorName} onChange={(value) => setMeta("pastorName", value)} /><Field label="팀장" value={meta.leaderName} onChange={(value) => setMeta("leaderName", value)} /><Field label="팀장 연락처" value={meta.leaderPhone} onChange={(value) => setMeta("leaderPhone", value)} /><Field label="회계" value={meta.accountantName} onChange={(value) => setMeta("accountantName", value)} /><Field label="회계 연락처" value={meta.accountantPhone} onChange={(value) => setMeta("accountantPhone", value)} /></div></div>
       <div className="settings-side"><div className="panel folder-panel"><FileArchive size={25} /><div><span>바른장부 프로젝트 파일</span><strong>{projectFilePath || "아직 저장하지 않음"}</strong></div></div></div>
     </div>
     <div className="settings-bottom-grid settings-bottom-single">

@@ -9,7 +9,7 @@ team-accounting.barun
 ├── manifest.json
 └── attachments/
     ├── receipt-a.png
-    └── fuel-evidence.pdf
+    └── fuel-evidence.png
 ```
 
 `manifest.json`의 최상위 필드는 다음과 같습니다.
@@ -28,4 +28,6 @@ team-accounting.barun
 - 기기별 절대 작업 경로와 CLOVA Secret Key는 패키지에 포함하지 않습니다.
 - 첨부파일은 반드시 `attachments/` 아래에 저장합니다.
 - PDF 첨부는 가져오는 즉시 페이지별 PNG로 변환합니다. 프로젝트 manifest와 `attachments/`에는 원본 PDF 대신 변환된 이미지만 포함합니다.
+- 저장 시 패키지 전체를 같은 폴더의 임시 파일에 먼저 기록하고 디스크 동기화를 마친 뒤 기존 `.barun`과 교체합니다. 패키지를 열 때 manifest가 참조하는 이미지가 하나라도 빠졌으면 손상된 프로젝트로 보고 열기를 중단합니다.
+- 앱 업데이트 직전에는 최신 프로젝트와 동일한 내용의 `프로젝트명-업데이트전-백업.barun`을 같은 폴더에 남깁니다. 이 파일도 일반 `.barun`과 동일하게 직접 열 수 있습니다.
 - 앱은 기존 `회계프로젝트.json`을 읽을 수 있지만 새 저장은 `.barun`을 사용합니다.

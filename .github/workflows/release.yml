@@ -1,0 +1,74 @@
+name: Release desktop app
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  publish:
+    needs: test
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin --bundles app,dmg"
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin --bundles app,dmg"
+          - platform: windows-latest
+            args: "--bundles nsis"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: "v__VERSION__"
+          releaseName: "바른장부 v__VERSION__"
+          releaseBody: |
+            회계 입력부터 공식 Excel 회계보고서와 PDF·Word 영수증철까지 만드는 바른장부 첫 공개 버전입니다.
+
+            - macOS Apple Silicon(M1 이상): `macos-aarch64` DMG
+            - macOS Intel: `macos-x86_64` DMG
+            - Windows 10/11 x64: Windows EXE 설치 프로그램
+
+            앱에 설치된 자동 업데이트 기능도 이 릴리스를 사용합니다.
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          updaterJsonPreferNsis: true
+          retryAttempts: 2
+          releaseAssetNamePattern: "barun-accounting-[version]-[platform]-[arch][setup][ext]"
+          args: ${{ matrix.args }}
