@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDerivedState, assignPayerFromExpense, incomeTotals, reconciliationSummary, settlementSummaries, sortAndNumberExpenses, teamMinistryAutoNote, validateProject } from "./accounting";
+import { applyDerivedState, assignPayerFromExpense, incomeTotals, reconciliationSummary, settlementSummaries, sortAndNumberExpenses, summarizeValidationIssues, teamMinistryAutoNote, validateProject } from "./accounting";
 import { createEmptyProject, type Expense } from "../types";
 
 const expense = (partial: Partial<Expense>): Expense => ({
@@ -160,6 +160,32 @@ describe("교육자료 기반 검산", () => {
     const project = createEmptyProject();
     project.expenses = [expense({ isFuel: true, receiptMode: "online-printable" })];
     expect(validateProject(project).some((issue) => issue.id.endsWith("-fuel-original"))).toBe(true);
+  });
+
+  it("여러 영수증에서 반복되는 같은 검토 규칙을 한 항목과 대상 건수로 요약한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [
+      expense({
+        id: "online-1",
+        createdOrder: 1,
+        receiptMode: "online-printable",
+        attachments: [{ id: "receipt-1", relativePath: "attachments/1.png", originalName: "1.png", mimeType: "image/png", kind: "online-receipt" }],
+      }),
+      expense({
+        id: "online-2",
+        createdOrder: 2,
+        receiptMode: "online-printable",
+        attachments: [{ id: "receipt-2", relativePath: "attachments/2.png", originalName: "2.png", mimeType: "image/png", kind: "online-receipt" }],
+      }),
+    ];
+
+    const summaries = summarizeValidationIssues(project, validateProject(project));
+    const onlineDetail = summaries.find((issue) => issue.title === "온라인 거래 상세내역을 확인해 주세요");
+    expect(onlineDetail).toMatchObject({
+      count: 2,
+      expenseIds: ["online-1", "online-2"],
+      targetSummary: "대상 2건 · 교통비 1번, 교통비 2번",
+    });
   });
 
   it("팀별사역비의 교역자 선물과 국내 30만원 초과 헌금을 안내한다", () => {

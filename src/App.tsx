@@ -52,6 +52,7 @@ import {
   reconciliationSummary,
   settlementSummaries,
   sortAndNumberExpenses,
+  summarizeValidationIssues,
   teamMinistryAutoNote,
   validateProject,
 } from "./lib/accounting";
@@ -68,7 +69,7 @@ import {
   saveProjectPackageAs,
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookPdf } from "./lib/receipt-pdf";
 import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
 import ProjectOnboarding from "./components/ProjectOnboarding";
@@ -448,6 +449,7 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
   setEditingExpense: (expense: Expense) => void;
 }) {
   const difference = reconciliationSummary(project).difference;
+  const reviewIssues = useMemo(() => summarizeValidationIssues(project, issues), [project, issues]);
   const completion = Math.max(8, Math.min(100, 100 - issues.filter((issue) => issue.severity === "error").length * 14 - issues.filter((issue) => issue.severity === "warning").length * 5));
   const incomeReady = incomes.total > 0;
   const expensesReady = project.expenses.length > 0;
@@ -479,7 +481,7 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
         <Metric icon={CircleDollarSign} tone="navy" label="총수입" value={money(incomes.total)} sub="회비·팀별사역비·플로잉" />
         <Metric icon={WalletCards} tone="orange" label="총지출" value={money(totals.total)} sub={`${project.expenses.length}건의 영수증`} />
         <Metric icon={Archive} tone="green" label="현재 차액" value={money(difference)} sub={difference === 0 ? "수입과 지출 일치" : "환입액 포함 검산 필요"} />
-        <div className="metric-card progress-card"><div className="progress-ring" style={{ "--progress": `${completion * 3.6}deg` } as React.CSSProperties}><strong>{completion}%</strong></div><div><span>제출 준비도</span><h3>{issues.length ? `${issues.length}개 확인 필요` : "검산 완료"}</h3><button onClick={() => setView("accounting")}>검사 결과 보기 <ArrowRight size={14} /></button></div></div>
+        <div className="metric-card progress-card"><div className="progress-ring" style={{ "--progress": `${completion * 3.6}deg` } as React.CSSProperties}><strong>{completion}%</strong></div><div><span>제출 준비도</span><h3>{reviewIssues.length ? `${reviewIssues.length}종 확인 필요` : "검산 완료"}</h3><button onClick={() => setView("accounting")}>검사 결과 보기 <ArrowRight size={14} /></button></div></div>
       </div>
       <div className="overview-grid">
         <div className="panel spending-panel">
@@ -493,12 +495,12 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
           </div>
         </div>
         <div className="panel checklist-panel">
-          <div className="panel-heading"><div><span className="eyebrow">CHECKLIST</span><h2>지금 확인할 것</h2></div><span className="issue-count">{issues.length}</span></div>
+          <div className="panel-heading"><div><span className="eyebrow">CHECKLIST</span><h2>지금 확인할 것</h2></div><span className="issue-count">{reviewIssues.length}</span></div>
           <div className="issue-list">
-            {issues.slice(0, 5).map((issue) => <div className="issue-item" key={issue.id}><span className={issue.severity}><AlertCircle size={17} /></span><div><strong>{issue.title}</strong><p>{issue.detail}</p></div></div>)}
-            {issues.length === 0 && <div className="empty-state compact"><BadgeCheck size={28} /><strong>모든 핵심 검사를 통과했습니다</strong><span>출력 전 원본 영수증 순서만 다시 확인하세요.</span></div>}
+            {reviewIssues.slice(0, 5).map((issue) => <div className="issue-item" key={issue.id}><span className={issue.severity}><AlertCircle size={17} /></span><div><div className="issue-title-row"><strong>{issue.title}</strong>{issue.count > 1 && <em>{issue.count}건 요약</em>}</div><p>{issue.detail}</p>{issue.targetSummary && <p className="issue-target-summary">{issue.targetSummary}</p>}</div></div>)}
+            {reviewIssues.length === 0 && <div className="empty-state compact"><BadgeCheck size={28} /><strong>모든 핵심 검사를 통과했습니다</strong><span>출력 전 원본 영수증 순서만 다시 확인하세요.</span></div>}
           </div>
-          {issues.length > 5 && <button className="full-link" onClick={() => setView("accounting")}>나머지 {issues.length - 5}개도 확인하기</button>}
+          {reviewIssues.length > 5 && <button className="full-link" onClick={() => setView("accounting")}>나머지 {reviewIssues.length - 5}종도 확인하기</button>}
         </div>
       </div>
     </section>
@@ -520,6 +522,11 @@ function AccountingView({ project, incomes, totals, issues, updateProject, onAdd
   onDelete: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<CategoryId | "all">("all");
+  const reviewIssues = useMemo(() => summarizeValidationIssues(project, issues), [project, issues]);
+  const errorIssueCount = issues.filter((item) => item.severity === "error").length;
+  const warningIssueCount = issues.filter((item) => item.severity === "warning").length;
+  const errorGroupCount = reviewIssues.filter((item) => item.severity === "error").length;
+  const warningGroupCount = reviewIssues.filter((item) => item.severity === "warning").length;
   const expenses = project.expenses.filter((expense) => filter === "all" || expense.category === filter);
   const reconciliation = reconciliationSummary(project);
   const teamMinistryExcess = Math.max(
@@ -549,7 +556,7 @@ function AccountingView({ project, incomes, totals, issues, updateProject, onAdd
     </div>
     <div className={`support-return-card ${teamMinistryExcess > 0 ? "funded" : reconciliation.returnAmount > 0 ? "returning" : "used"}`}><div className="support-return-title"><span><CircleDollarSign size={18} /></span><div><strong>팀별사역지원금 사용 현황</strong><small>{teamMinistryExcess > 0 ? `지원금 초과 ${money(teamMinistryExcess)}은 팀회비로 자동 충당됩니다.` : "6. 팀별사역비 항목으로 등록한 지출을 지원금 사용액으로 계산합니다."}</small></div></div><div className="support-return-formula"><span><small>팀별사역지원금</small><strong>{money(reconciliation.income.teamSupport)}</strong></span><i>−</i><span><small>6. 팀별사역비</small><strong>{money(reconciliation.teamMinistryAmount)}</strong></span><i>=</i><span className="support-return-result"><small>환입액 (최소 0원)</small><strong>{money(reconciliation.returnAmount)}</strong></span>{teamMinistryExcess > 0 && <span className="support-dues-used"><small>팀회비 자동 충당</small><strong>{money(teamMinistryExcess)}</strong></span>}</div></div>
     <div className="reconcile-card live-reconcile"><div><span>총수입</span><strong>{money(reconciliation.income.total)}</strong></div><i>−</i><div><span>총지출</span><strong>{money(reconciliation.expense.total)}</strong></div><i>−</i><div><span>환입액</span><strong>{money(reconciliation.returnAmount)}</strong></div><i>=</i><div className={reconciliation.difference === 0 ? "balanced" : "unbalanced"}><span>실시간 검산 차액</span><strong>{money(reconciliation.difference)}</strong></div><div className={`balance-status ${reconciliation.difference === 0 ? "ok" : "warn"}`}>{reconciliation.difference === 0 ? <Check size={18} /> : <AlertCircle size={18} />}{reconciliation.difference === 0 ? "일치" : "확인 필요"}</div></div>
-    <div className="panel inline-review-panel"><div className="panel-heading"><div><span className="eyebrow">AUTOMATIC REVIEW</span><h2>자동 검토</h2></div><div className="severity-summary"><span className="error">오류 {issues.filter((item) => item.severity === "error").length}</span><span className="warning">주의 {issues.filter((item) => item.severity === "warning").length}</span></div></div><div className="issue-list review-grid">{issues.map((issue) => <div className="issue-item" key={issue.id}><span className={issue.severity}><AlertCircle size={17} /></span><div><strong>{issue.title}</strong><p>{issue.detail}</p></div></div>)}{issues.length === 0 && <div className="empty-state compact"><BadgeCheck size={30} /><strong>자동 검사를 모두 통과했습니다</strong><span>수입과 지출, 증빙 및 정산 검산이 일치합니다.</span></div>}</div></div>
+    <div className="panel inline-review-panel"><div className="panel-heading"><div><span className="eyebrow">AUTOMATIC REVIEW</span><h2>자동 검토</h2></div><div className="severity-summary"><span className="error">오류 {errorGroupCount}종{errorIssueCount > errorGroupCount ? ` · ${errorIssueCount}건` : ""}</span><span className="warning">주의 {warningGroupCount}종{warningIssueCount > warningGroupCount ? ` · ${warningIssueCount}건` : ""}</span></div></div><div className="issue-list review-grid">{reviewIssues.map((issue) => <div className="issue-item" key={issue.id}><span className={issue.severity}><AlertCircle size={17} /></span><div><div className="issue-title-row"><strong>{issue.title}</strong>{issue.count > 1 && <em>{issue.count}건 요약</em>}</div><p>{issue.detail}</p>{issue.targetSummary && <p className="issue-target-summary">{issue.targetSummary}</p>}</div></div>)}{reviewIssues.length === 0 && <div className="empty-state compact"><BadgeCheck size={30} /><strong>자동 검사를 모두 통과했습니다</strong><span>수입과 지출, 증빙 및 정산 검산이 일치합니다.</span></div>}</div></div>
     <div className="ledger-section-heading"><div><span className="eyebrow">EXPENSE LEDGER</span><h2>지출 내역</h2><p>같은 항목 안에서 날짜순으로 정렬되고 영수증 번호는 항목마다 다시 시작합니다.</p></div><div className="ledger-heading-actions"><strong>{project.expenses.length}건 · {money(totals.total)}</strong><button className="button accent" onClick={onAdd}><Plus size={17} /> 지출 등록</button></div></div>
     <div className="filter-strip no-print"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>전체 <b>{project.expenses.length}</b></button>{CATEGORY_DEFINITIONS.map((category) => <button key={category.id} className={filter === category.id ? "active" : ""} onClick={() => setFilter(category.id)}>{category.label} <b>{project.expenses.filter((expense) => expense.category === category.id).length}</b></button>)}</div>
     <div className="panel table-panel"><table className="ledger-table"><thead><tr><th>항목</th><th>날짜</th><th>내용</th><th className="numeric">금액</th><th>번호</th><th>증빙</th><th>내부 정산</th><th className="actions"><button className="ledger-table-add no-print" aria-label="표에서 지출 등록" title="지출 등록" onClick={onAdd}><Plus size={16} /></button></th></tr></thead><tbody>
@@ -580,8 +587,6 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     pixelsPerMmY: number;
     cropMode: boolean;
     singleColumnPage: boolean;
-    columnWidthMm: number;
-    otherColumnMaxWidthMm: number;
     layout?: NonNullable<Attachment["layout"]>;
   } | null>(null);
   const transportFuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
@@ -632,11 +637,7 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     const bounds = event.currentTarget.closest(".receipt-flow-item")?.getBoundingClientRect();
     const { attachment, offlineHolder, expense, evidenceId } = placement.item;
     if (!bounds || (!attachment && !offlineHolder)) return;
-    const placementPage = receiptPages.find((page) => page.some((entry) => entry.item.id === placement.item.id));
     const singleColumnPage = placement.pageColumnCount === 1;
-    const otherColumnMaxWidthMm = singleColumnPage
-      ? Math.max(0, ...(placementPage ?? []).filter((entry) => entry.item.id !== placement.item.id).map((entry) => entry.widthMm))
-      : 0;
     resizeRef.current = {
       target: attachment ? "attachment" : "offline-holder",
       attachmentId: attachment?.id,
@@ -652,8 +653,6 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       pixelsPerMmY: bounds.height / placement.heightMm,
       cropMode: offlineHolder ? true : croppingAttachmentId === attachment?.id,
       singleColumnPage,
-      columnWidthMm: placement.columnWidthMm ?? placement.widthMm,
-      otherColumnMaxWidthMm,
       layout: attachment ? { ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout } : undefined,
     };
   };
@@ -687,9 +686,8 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
         : undefined;
       if (croppedFrame && resize.singleColumnPage) {
         croppedFrame.frameOffsetXMm += centeredColumnResizeOffset(
-          resize.columnWidthMm,
+          resize.widthMm,
           croppedFrame.widthMm,
-          resize.otherColumnMaxWidthMm,
         );
       }
       updateAttachmentLayout(resize.attachmentId, () => ({
@@ -831,6 +829,14 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
     ? project.categoryEvidence.find((evidence) => evidence.id === evidenceId)?.offlineHolders ?? []
     : offlineHoldersForExpense(expense);
   const holderIndex = offlineHolder ? offlineHolders.findIndex((holder) => holder.id === offlineHolder.id) : -1;
+  const watermarkLabel = receiptWatermarkLabel(item);
+  const watermarkLabelSize = watermarkFontSizePx(watermarkLabel, placement.widthMm, placement.heightMm);
+  const watermarkStyle = {
+    "--watermark-label-size": `${watermarkLabelSize}px`,
+    "--watermark-note-size": `${Math.max(4.5, Math.min(8, watermarkLabelSize * 0.52))}px`,
+    "--watermark-pad-x": `${Math.max(1, Math.min(4, placement.widthMm / 22))}mm`,
+    "--watermark-pad-y": `${Math.max(0.6, Math.min(2.2, placement.heightMm / 28))}mm`,
+  } as React.CSSProperties;
   const receiptCode = evidenceId
     ? `주유비 산정 증빙${offlineHolder ? ` · 오프라인 ${holderIndex + 1}/${offlineHolders.length}` : " · 온라인"}`
     : `${category.number}-${receiptNumber}${offlineHolder && offlineHolders.length > 1 ? ` · 실물 ${holderIndex + 1}/${offlineHolders.length}` : supporting ? " · 추가" : ""}`;
@@ -838,7 +844,7 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${cropMode ? "crop-mode" : ""} ${offlineHolder ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
     {cropMode && attachment && <PrintableAttachment project={project} attachment={attachment} alt="자르기 중인 원본 그림" frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} ghost />}
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
-      {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print"><strong>{receiptWatermarkLabel(item)}</strong><small>PDF 파일로 내보낼 때 포함되지 않습니다</small></div>}
+      {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>PDF 파일로 내보낼 때 포함되지 않습니다</small></div>}
       {offlineHolder
         ? <div className="physical-placeholder"><strong>{offlinePlaceholderLabel(item)}</strong><small>{evidenceId ? "산정 증빙을 중앙에 붙이세요" : "실물 영수증을 중앙에 붙이세요"}</small></div>
         : attachment

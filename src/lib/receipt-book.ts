@@ -267,12 +267,23 @@ export function cropPictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm
 }
 
 export function centeredColumnResizeOffset(
-  currentColumnWidthMm: number,
+  currentFrameWidthMm: number,
   nextFrameWidthMm: number,
-  otherColumnMaxWidthMm: number,
 ) {
-  const nextColumnWidthMm = Math.max(otherColumnMaxWidthMm, nextFrameWidthMm);
-  return (nextColumnWidthMm - currentColumnWidthMm) / 2;
+  return (nextFrameWidthMm - currentFrameWidthMm) / 2;
+}
+
+export function watermarkFontSizePx(label: string, widthMm: number, heightMm: number) {
+  const labelUnits = [...label].reduce((total, character) => {
+    if (/^[\u3131-\uD79D]$/.test(character)) return total + 1;
+    if (/^[A-Z0-9]$/.test(character)) return total + 0.7;
+    return total + 0.55;
+  }, 0);
+  const horizontalPaddingMm = clamp(widthMm / 22, 1, 4);
+  const availableWidthPx = Math.max(1, widthMm * 0.88 - horizontalPaddingMm * 2) * 96 / 25.4;
+  const widthLimitedSize = availableWidthPx / Math.max(1, labelUnits * 1.08);
+  const heightLimitedSize = heightMm * 96 / 25.4 * 0.26;
+  return clamp(Math.min(widthLimitedSize, heightLimitedSize), 5, 20);
 }
 
 function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<string, number>) {
@@ -323,16 +334,16 @@ export function layoutReceiptBookItems(
       columnX,
       Math.max(...page.filter((placement) => placement.xMm === columnX).map((placement) => placement.widthMm)),
     ]));
-    const centeredColumnOffset = pageColumnCount === 1
-      ? (RECEIPT_FLOW_WIDTH_MM - (columnWidths.get(columnPositions[0]) ?? 0)) / 2
-      : 0;
     pages.push(page.map((placement) => {
       const layout = placement.item.attachment
         ? { ...DEFAULT_IMAGE_LAYOUT, ...placement.item.attachment.layout }
         : undefined;
+      const centeredItemOffset = pageColumnCount === 1
+        ? (RECEIPT_FLOW_WIDTH_MM - placement.widthMm) / 2
+        : 0;
       return {
         ...placement,
-        xMm: placement.xMm + centeredColumnOffset + (layout?.frameOffsetXMm ?? 0),
+        xMm: placement.xMm + centeredItemOffset + (layout?.frameOffsetXMm ?? 0),
         yMm: placement.yMm + (layout?.frameOffsetYMm ?? 0),
         pageColumnCount,
         columnWidthMm: columnWidths.get(placement.xMm) ?? placement.widthMm,

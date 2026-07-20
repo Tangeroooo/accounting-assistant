@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame } from "./receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -98,6 +98,12 @@ describe("영수증철 페이지 구성", () => {
     ]);
   });
 
+  it("작은 그림 영역에서는 전체 워터마크 라벨이 들어가도록 글자 크기를 줄인다", () => {
+    expect(watermarkFontSizePx("교통비-1-1", 120, 90)).toBe(20);
+    expect(watermarkFontSizePx("팀별사역비-공통증빙-12", 32, 20)).toBeGreaterThanOrEqual(5);
+    expect(watermarkFontSizePx("팀별사역비-공통증빙-12", 32, 20)).toBeLessThan(10);
+  });
+
   it("일반 모드의 모서리 핸들은 비율을 유지하고 자르기 핸들은 한쪽 프레임만 바꾼다", () => {
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "se", deltaXmm: 20, deltaYmm: 5, cropMode: false })).toEqual({ widthMm: 100, heightMm: 150 });
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "e", deltaXmm: 20, deltaYmm: 0, cropMode: false })).toEqual({ widthMm: 100, heightMm: 150 });
@@ -147,13 +153,13 @@ describe("영수증철 페이지 구성", () => {
     const before = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
 
     const east = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "e", deltaXmm: -20, deltaYmm: 0, layout: baseLayout });
-    east.frameOffsetXMm += centeredColumnResizeOffset(100, east.widthMm, 0);
+    east.frameOffsetXMm += centeredColumnResizeOffset(100, east.widthMm);
     project.expenses[0].attachments[0].layout = { ...baseLayout, ...east };
     const afterEast = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
     expect(afterEast.xMm).toBeCloseTo(before.xMm, 6);
 
     const west = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "w", deltaXmm: 20, deltaYmm: 0, layout: baseLayout });
-    west.frameOffsetXMm += centeredColumnResizeOffset(100, west.widthMm, 0);
+    west.frameOffsetXMm += centeredColumnResizeOffset(100, west.widthMm);
     project.expenses[0].attachments[0].layout = { ...baseLayout, ...west };
     const afterWest = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
     expect(afterWest.xMm + afterWest.widthMm).toBeCloseTo(before.xMm + before.widthMm, 6);
@@ -163,7 +169,7 @@ describe("영수증철 페이지 구성", () => {
     expect(completed.xMm).toBeCloseTo((190 - completed.widthMm) / 2, 6);
   });
 
-  it("한 페이지만 한 열로 채워지면 열 전체를 가로 중앙에 둔다", () => {
+  it("한 페이지만 한 열로 채워지면 각 항목을 최종 너비로 가로 중앙에 둔다", () => {
     const project = createEmptyProject();
     project.expenses = [
       { ...expense(1), offlineHolders: [{ id: "narrow", widthMm: 80, heightMm: 90 }] },
@@ -172,7 +178,7 @@ describe("영수증철 페이지 구성", () => {
 
     const page = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
     expect(page).toMatchObject([
-      { xMm: 35, pageColumnCount: 1, columnWidthMm: 120 },
+      { xMm: 55, pageColumnCount: 1, columnWidthMm: 120 },
       { xMm: 35, pageColumnCount: 1, columnWidthMm: 120 },
     ]);
   });

@@ -70,8 +70,10 @@ nav { display:flex;flex-direction:column;gap:5px; } nav button{height:44px;paddi
 
 .attachment-row{grid-template-columns:18px minmax(0,1fr) 115px 28px}
 
-.receipt-flow-item .receipt-screen-tag{left:50%;top:50%;max-width:88%;padding:2.2mm 4mm;border:1.5px solid #e94f24a8;border-radius:2.5mm;background:#fff4e6c7;color:#d93f18e8;font-size:20px;font-weight:900;letter-spacing:.08em;text-align:center;text-shadow:0 1px 1px #fff,0 0 7px #fff;transform:translate(-50%,-50%) rotate(-9deg);overflow:hidden;text-overflow:ellipsis;box-shadow:0 5px 18px #a8321824;user-select:none}
-.receipt-flow-item .receipt-screen-tag strong,.receipt-flow-item .receipt-screen-tag small{display:block;overflow:hidden;text-overflow:ellipsis}
-.receipt-flow-item .receipt-screen-tag small{margin-top:1.2mm;color:#a43820cc;font-size:8px;font-weight:750;letter-spacing:0;text-shadow:0 1px 1px #fff}
+.receipt-flow-item .receipt-screen-tag{left:50%;top:50%;width:max-content;max-width:88%;padding:var(--watermark-pad-y,2.2mm) var(--watermark-pad-x,4mm);border:1.5px solid #e94f24a8;border-radius:2.5mm;background:#fff4e6c7;color:#d93f18e8;font-size:var(--watermark-label-size,20px);font-weight:900;letter-spacing:.08em;text-align:center;text-shadow:0 1px 1px #fff,0 0 7px #fff;transform:translate(-50%,-50%) rotate(-9deg);overflow:visible;box-shadow:0 5px 18px #a8321824;user-select:none}
+.receipt-flow-item .receipt-screen-tag strong,.receipt-flow-item .receipt-screen-tag small{display:block;max-width:100%}
+.receipt-flow-item .receipt-screen-tag strong{white-space:nowrap}
+.receipt-flow-item .receipt-screen-tag small{margin-top:min(1.2mm,4%);color:#a43820cc;font-size:var(--watermark-note-size,8px);font-weight:750;line-height:1.25;letter-spacing:0;white-space:normal;text-shadow:0 1px 1px #fff}
+.issue-title-row{display:flex;align-items:center;gap:7px;min-width:0}.issue-title-row strong{min-width:0}.issue-title-row em{flex:none;padding:3px 6px;border-radius:6px;background:#eef2f7;color:#60708a;font-size:7px;font-style:normal;font-weight:800}.issue-item .issue-target-summary{margin-top:5px;color:#5d6c82;font-weight:750}
 
 @media(max-width:1050px){.receipt-floating-toolbar-anchor .editor-selection{width:220px}.receipt-floating-toolbar-anchor .receipt-editor-controls{max-width:calc(100vw - 48px)}}

@@ -1,5 +1,6 @@
 import {
   CATEGORY_DEFINITIONS,
+  getCategory,
   type CategoryId,
   type Expense,
   type Person,
@@ -139,6 +140,66 @@ export function settlementSummaries(project: ProjectData): SettlementSummary[] {
 
 const hasAttachment = (expense: Expense, kinds: Expense["attachments"][number]["kind"][]) =>
   expense.attachments.some((attachment) => kinds.includes(attachment.kind));
+
+export interface ValidationIssueSummary extends Omit<ValidationIssue, "id" | "expenseId"> {
+  id: string;
+  count: number;
+  issueIds: string[];
+  expenseIds: string[];
+  targetSummary?: string;
+}
+
+/**
+ * 같은 검토 규칙이 여러 영수증에서 반복될 때 화면에는 한 항목으로 묶는다.
+ * 대상은 앞의 세 건만 보여 주고 나머지는 건수로 줄여 긴 경고 목록을 방지한다.
+ */
+export function summarizeValidationIssues(
+  project: ProjectData,
+  issues: ValidationIssue[],
+): ValidationIssueSummary[] {
+  const numberedExpenses = new Map(
+    sortAndNumberExpenses(project.expenses).map((expense) => [expense.id, expense]),
+  );
+  const groups = new Map<string, ValidationIssueSummary>();
+
+  for (const issue of issues) {
+    const key = [issue.severity, issue.scope, issue.title, issue.detail].join("\u0000");
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.issueIds.push(issue.id);
+      if (issue.expenseId && !existing.expenseIds.includes(issue.expenseId)) {
+        existing.expenseIds.push(issue.expenseId);
+      }
+      continue;
+    }
+    groups.set(key, {
+      id: issue.id,
+      severity: issue.severity,
+      scope: issue.scope,
+      title: issue.title,
+      detail: issue.detail,
+      count: 1,
+      issueIds: [issue.id],
+      expenseIds: issue.expenseId ? [issue.expenseId] : [],
+    });
+  }
+
+  return [...groups.values()].map((summary) => {
+    if (summary.expenseIds.length === 0) return summary;
+    const labels = summary.expenseIds.flatMap((expenseId) => {
+      const expense = numberedExpenses.get(expenseId);
+      if (!expense) return [];
+      return [`${getCategory(expense.category).label} ${expense.receiptNumber ?? "?"}번`];
+    });
+    const visibleLabels = labels.slice(0, 3).join(", ");
+    const remainingCount = Math.max(0, labels.length - 3);
+    return {
+      ...summary,
+      targetSummary: `대상 ${labels.length}건 · ${visibleLabels}${remainingCount > 0 ? ` 외 ${remainingCount}건` : ""}`,
+    };
+  });
+}
 
 export function validateProject(project: ProjectData): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
