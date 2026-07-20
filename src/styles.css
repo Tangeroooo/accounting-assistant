@@ -70,6 +70,6 @@ nav { display:flex;flex-direction:column;gap:5px; } nav button{height:44px;paddi
 
 .attachment-row{grid-template-columns:18px minmax(0,1fr) 115px 28px}
 
-.receipt-flow-item .receipt-screen-tag{left:50%;top:50%;max-width:88%;padding:2.2mm 4mm;border:1.5px solid #17294a30;border-radius:2.5mm;background:#ffffff80;color:#17294a80;font-size:20px;font-weight:900;letter-spacing:.08em;text-align:center;text-shadow:0 1px 0 #fff;transform:translate(-50%,-50%) rotate(-9deg);overflow:hidden;text-overflow:ellipsis;box-shadow:0 5px 18px #17294a12;user-select:none}
+.receipt-flow-item .receipt-screen-tag{left:50%;top:50%;max-width:88%;padding:2.2mm 4mm;border:1.5px solid #e94f24a8;border-radius:2.5mm;background:#fff4e6c7;color:#d93f18e8;font-size:20px;font-weight:900;letter-spacing:.08em;text-align:center;text-shadow:0 1px 1px #fff,0 0 7px #fff;transform:translate(-50%,-50%) rotate(-9deg);overflow:hidden;text-overflow:ellipsis;box-shadow:0 5px 18px #a8321824;user-select:none}
 
 @media(max-width:1050px){.receipt-floating-toolbar-anchor .editor-selection{width:220px}.receipt-floating-toolbar-anchor .receipt-editor-controls{max-width:calc(100vw - 48px)}}
