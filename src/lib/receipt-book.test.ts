@@ -103,4 +103,23 @@ describe("영수증철 페이지 구성", () => {
       { widthMm: 120, heightMm: 45 },
     ]);
   });
+
+  it("공통 주유비 산정 증빙의 온라인 파일과 오프라인 홀더를 영수증 뒤에 함께 배치한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [{ ...expense(1), category: "transport", isFuel: true }];
+    project.categoryEvidence = [{
+      id: "fuel-evidence",
+      category: "transport",
+      kind: "fuel-calculation",
+      title: "주유비 산정 증빙",
+      attachments: [{ id: "fuel-image", relativePath: "attachments/fuel.png", originalName: "fuel.png", mimeType: "image/png", kind: "other" }],
+      offlineHolders: [{ id: "fuel-offline", widthMm: 90, heightMm: 70 }],
+    }];
+    const items = buildReceiptBookItems(project);
+    expect(items.slice(-2).map((item) => ({ evidenceId: item.evidenceId, attachment: item.attachment?.id, holder: item.offlineHolder?.id }))).toEqual([
+      { evidenceId: "fuel-evidence", attachment: "fuel-image", holder: undefined },
+      { evidenceId: "fuel-evidence", attachment: undefined, holder: "fuel-offline" },
+    ]);
+    expect(layoutReceiptBookItems(items).flat().at(-1)).toMatchObject({ widthMm: 90, heightMm: 70 });
+  });
 });

@@ -28,6 +28,14 @@ describe(".barun 프로젝트 패키지", () => {
       settledAmount: 0,
       settlementStatus: "not-applicable",
     }];
+    project.categoryEvidence = [{
+      id: "fuel-evidence",
+      category: "transport",
+      kind: "fuel-calculation",
+      title: "주유비 산정 증빙",
+      attachments: [],
+      offlineHolders: [{ id: "fuel-holder", widthMm: 92, heightMm: 68 }],
+    }];
     const bytes = await createBarunPackage(project, async () => new Uint8Array([1, 2, 3]));
     const zip = await JSZip.loadAsync(bytes);
     const manifest = JSON.parse(await zip.file("manifest.json")!.async("string"));
@@ -40,6 +48,7 @@ describe(".barun 프로젝트 패키지", () => {
     expect(parsed.project.meta.teamName).toBe("강릉팀");
     expect(parsed.project.expenses[0].attachments[0].layout).toEqual({ widthMm: 86, heightMm: 48, aspectRatio: 0.67, fit: "cover", scale: 1.35, offsetX: 12, offsetY: -7, rotation: 90 });
     expect(parsed.project.expenses[0].offlineHolders).toEqual([{ id: "holder", widthMm: 55, heightMm: 100 }]);
+    expect(parsed.project.categoryEvidence[0].offlineHolders).toEqual([{ id: "fuel-holder", widthMm: 92, heightMm: 68 }]);
     expect(parsed.assets.get("attachments/receipt.png")).toEqual(new Uint8Array([1, 2, 3]));
   });
 

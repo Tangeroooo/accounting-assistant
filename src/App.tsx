@@ -432,7 +432,7 @@ function Overview({ project, totals, incomes, issues, setView, setEditingExpense
   const receiptsReady = expensesReady
     && project.expenses.every((expense) => expense.receiptMode === "offline-original" ? expense.originalConfirmed : expense.attachments.length > 0)
     && (!project.expenses.some((expense) => expense.category === "transport" && expense.isFuel)
-      || project.categoryEvidence.some((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation" && evidence.attachments.length > 0));
+      || project.categoryEvidence.some((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation" && (evidence.attachments.length > 0 || (evidence.offlineHolders?.length ?? 0) > 0)));
   const settlementReady = receiptsReady && settlementSummaries(project).every((summary) => summary.outstandingAmount === 0);
   const workflowSteps: { number: number; title: string; description: string; done: boolean; current: boolean; view: ViewId }[] = [
     { number: 1, title: "회계 입력·검토", description: incomeReady && expensesReady ? `${project.expenses.length}건과 검산 결과를 함께 확인해요.` : "수입부터 입력하고 지출을 등록하세요.", done: accountingReady, current: !accountingReady, view: "accounting" },
@@ -546,6 +546,7 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     target: "attachment" | "offline-holder";
     attachmentId?: string;
     expenseId?: string;
+    evidenceId?: string;
     holderId?: string;
     handle: string;
     startX: number;
@@ -562,6 +563,9 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
   const receiptPages = layoutReceiptBookItems(receiptItems);
   const selectedItem = receiptItems.find((item) => item.attachment?.id === selectedAttachmentId || item.offlineHolder?.id === selectedOfflineHolderId);
   const selectedPlacement = receiptPages.flat().find((placement) => placement.item.attachment?.id === selectedAttachmentId || placement.item.offlineHolder?.id === selectedOfflineHolderId);
+  const selectedOfflineHolders = selectedItem?.evidenceId
+    ? project.categoryEvidence.find((evidence) => evidence.id === selectedItem.evidenceId)?.offlineHolders ?? []
+    : selectedItem ? offlineHoldersForExpense(selectedItem.expense) : [];
   const selectedLayout = { ...DEFAULT_IMAGE_LAYOUT, ...selectedItem?.attachment?.layout };
   const updateAttachmentLayout = (attachmentId: string, updater: (layout: NonNullable<Attachment["layout"]>) => NonNullable<Attachment["layout"]>) => updateProject((current) => {
     const updateAttachment = (attachment: Attachment) => attachment.id === attachmentId ? { ...attachment, layout: updater({ ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout }) } : attachment;
@@ -571,11 +575,14 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       categoryEvidence: current.categoryEvidence.map((evidence) => ({ ...evidence, attachments: evidence.attachments.map(updateAttachment) })),
     };
   });
-  const updateOfflineHolder = (expenseId: string, holderId: string, updater: (holder: OfflineReceiptHolder) => OfflineReceiptHolder) => updateProject((current) => ({
+  const updateOfflineHolder = ({ expenseId, evidenceId }: { expenseId?: string; evidenceId?: string }, holderId: string, updater: (holder: OfflineReceiptHolder) => OfflineReceiptHolder) => updateProject((current) => ({
     ...current,
     expenses: current.expenses.map((expense) => expense.id === expenseId
       ? { ...expense, offlineHolders: offlineHoldersForExpense(expense).map((holder) => holder.id === holderId ? updater(holder) : holder) }
       : expense),
+    categoryEvidence: current.categoryEvidence.map((evidence) => evidence.id === evidenceId
+      ? { ...evidence, offlineHolders: (evidence.offlineHolders ?? []).map((holder) => holder.id === holderId ? updater(holder) : holder) }
+      : evidence),
   }));
   const startDrag = (event: React.PointerEvent<HTMLDivElement>, attachmentId: string) => {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -597,12 +604,13 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     const bounds = event.currentTarget.closest(".receipt-flow-item")?.getBoundingClientRect();
-    const { attachment, offlineHolder, expense } = placement.item;
+    const { attachment, offlineHolder, expense, evidenceId } = placement.item;
     if (!bounds || (!attachment && !offlineHolder)) return;
     resizeRef.current = {
       target: attachment ? "attachment" : "offline-holder",
       attachmentId: attachment?.id,
-      expenseId: offlineHolder ? expense.id : undefined,
+      expenseId: offlineHolder && !evidenceId ? expense.id : undefined,
+      evidenceId: offlineHolder ? evidenceId : undefined,
       holderId: offlineHolder?.id,
       handle,
       startX: event.clientX,
@@ -630,8 +638,8 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       deltaYmm: deltaY,
       cropMode: resize.cropMode,
     });
-    if (resize.target === "offline-holder" && resize.expenseId && resize.holderId) {
-      updateOfflineHolder(resize.expenseId, resize.holderId, (holder) => ({ ...holder, widthMm, heightMm }));
+    if (resize.target === "offline-holder" && (resize.expenseId || resize.evidenceId) && resize.holderId) {
+      updateOfflineHolder({ expenseId: resize.expenseId, evidenceId: resize.evidenceId }, resize.holderId, (holder) => ({ ...holder, widthMm, heightMm }));
     } else if (resize.attachmentId && resize.layout) {
       updateAttachmentLayout(resize.attachmentId, () => ({
         ...resize.layout!,
@@ -698,19 +706,23 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       expenses: current.expenses.map((expense) => expense.id === selectedItem.expense.id
         ? { ...expense, offlineHolders: [...offlineHoldersForExpense(expense), holder] }
         : expense),
+      categoryEvidence: current.categoryEvidence.map((evidence) => evidence.id === selectedItem.evidenceId
+        ? { ...evidence, offlineHolders: [...(evidence.offlineHolders ?? []), holder] }
+        : evidence),
     }));
     setSelectedOfflineHolderId(holder.id);
   };
   const removeOfflineHolder = () => {
     if (!selectedItem?.offlineHolder) return;
-    const holders = offlineHoldersForExpense(selectedItem.expense);
-    if (holders.length <= 1) return;
+    const holders = selectedOfflineHolders;
+    if (!selectedItem.evidenceId && holders.length <= 1) return;
     const remaining = holders.filter((holder) => holder.id !== selectedItem.offlineHolder?.id);
     updateProject((current) => ({
       ...current,
-      expenses: current.expenses.map((expense) => expense.id === selectedItem.expense.id ? { ...expense, offlineHolders: remaining } : expense),
+      expenses: current.expenses.map((expense) => !selectedItem.evidenceId && expense.id === selectedItem.expense.id ? { ...expense, offlineHolders: remaining } : expense),
+      categoryEvidence: current.categoryEvidence.map((evidence) => evidence.id === selectedItem.evidenceId ? { ...evidence, offlineHolders: remaining } : evidence),
     }));
-    setSelectedOfflineHolderId(remaining[0].id);
+    setSelectedOfflineHolderId(remaining[0]?.id ?? null);
   };
   const addFuelEvidence = async () => {
     if (!project.projectDirectory) return;
@@ -720,18 +732,28 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     updateProject((current) => {
       const existing = current.categoryEvidence.find((item) => item.category === "transport" && item.kind === "fuel-calculation");
       const evidenceAttachments = attachments.map((item) => ({ ...item, kind: "other" as const }));
-      return { ...current, categoryEvidence: existing ? current.categoryEvidence.map((item) => item.id === existing.id ? { ...item, attachments: [...item.attachments, ...evidenceAttachments] } : item) : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport", kind: "fuel-calculation", title: "교통비 공통 주유비 산정 증빙", attachments: evidenceAttachments }] };
+      return { ...current, categoryEvidence: existing ? current.categoryEvidence.map((item) => item.id === existing.id ? { ...item, attachments: [...item.attachments, ...evidenceAttachments] } : item) : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport", kind: "fuel-calculation", title: "교통비 공통 주유비 산정 증빙", attachments: evidenceAttachments, offlineHolders: [] }] };
     });
+  };
+  const addFuelOfflineHolder = () => {
+    const holder: OfflineReceiptHolder = { id: crypto.randomUUID(), widthMm: 82, heightMm: 62 };
+    updateProject((current) => {
+      const existing = current.categoryEvidence.find((item) => item.category === "transport" && item.kind === "fuel-calculation");
+      return { ...current, categoryEvidence: existing
+        ? current.categoryEvidence.map((item) => item.id === existing.id ? { ...item, offlineHolders: [...(item.offlineHolders ?? []), holder] } : item)
+        : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport", kind: "fuel-calculation", title: "교통비 공통 주유비 산정 증빙", attachments: [], offlineHolders: [holder] }] };
+    });
+    setSelectedOfflineHolderId(holder.id);
   };
   return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." action={<button className="button accent no-print" onClick={onSavePdf} disabled={pdfBusy || project.expenses.length === 0}><Download size={18} /> {pdfBusy ? "PDF 생성 중" : "PDF 저장"}</button>} />
     <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림·홀더 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>세로 우선 자동 배치</strong><span>위→아래로 채운 뒤 다음 열로 이동 · 크기 변경 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 PDF에 넣지 않고 인쇄 후 직접 기입</div></div>
     <div className={`panel receipt-editor-controls no-print ${selectedItem ? "active" : ""} ${selectedItem?.offlineHolder ? "holder-controls" : ""}`}>
       <div className="editor-selection">{selectedItem?.offlineHolder ? <ReceiptText size={22} /> : <FileImage size={22} />}<div><strong>{selectedItem?.attachment?.originalName ?? (selectedItem?.offlineHolder ? "오프라인 실물 부착 공간" : "편집할 영수증이나 홀더를 선택하세요")}</strong><span>{selectedItem ? `${getCategory(selectedItem.expense.category).label} · ${selectedItem.expense.content}` : "대상을 클릭하면 조정 도구가 활성화됩니다."}</span></div></div>
       {selectedItem?.offlineHolder ? <>
-        <label><span>홀더 너비 {Math.round(selectedPlacement?.widthMm ?? selectedItem.offlineHolder.widthMm)}mm</span><input type="range" min="32" max="190" step="1" value={selectedPlacement?.widthMm ?? selectedItem.offlineHolder.widthMm} onChange={(event) => updateOfflineHolder(selectedItem.expense.id, selectedItem.offlineHolder!.id, (holder) => ({ ...holder, widthMm: Number(event.target.value) }))} /></label>
-        <label><span>홀더 높이 {Math.round(selectedPlacement?.heightMm ?? selectedItem.offlineHolder.heightMm)}mm</span><input type="range" min="20" max="262" step="1" value={selectedPlacement?.heightMm ?? selectedItem.offlineHolder.heightMm} onChange={(event) => updateOfflineHolder(selectedItem.expense.id, selectedItem.offlineHolder!.id, (holder) => ({ ...holder, heightMm: Number(event.target.value) }))} /></label>
-        <button className="button secondary" onClick={addOfflineHolder}><Plus size={16} /> 같은 영수증 조각 추가</button>
-        <button className="button ghost" disabled={offlineHoldersForExpense(selectedItem.expense).length <= 1} onClick={removeOfflineHolder}><Trash2 size={16} /> 홀더 삭제</button>
+        <label><span>홀더 너비 {Math.round(selectedPlacement?.widthMm ?? selectedItem.offlineHolder.widthMm)}mm</span><input type="range" min="32" max="190" step="1" value={selectedPlacement?.widthMm ?? selectedItem.offlineHolder.widthMm} onChange={(event) => updateOfflineHolder({ expenseId: selectedItem.evidenceId ? undefined : selectedItem.expense.id, evidenceId: selectedItem.evidenceId }, selectedItem.offlineHolder!.id, (holder) => ({ ...holder, widthMm: Number(event.target.value) }))} /></label>
+        <label><span>홀더 높이 {Math.round(selectedPlacement?.heightMm ?? selectedItem.offlineHolder.heightMm)}mm</span><input type="range" min="20" max="262" step="1" value={selectedPlacement?.heightMm ?? selectedItem.offlineHolder.heightMm} onChange={(event) => updateOfflineHolder({ expenseId: selectedItem.evidenceId ? undefined : selectedItem.expense.id, evidenceId: selectedItem.evidenceId }, selectedItem.offlineHolder!.id, (holder) => ({ ...holder, heightMm: Number(event.target.value) }))} /></label>
+        <button className="button secondary" onClick={addOfflineHolder}><Plus size={16} /> {selectedItem.evidenceId ? "같은 증빙 부착칸 추가" : "같은 영수증 조각 추가"}</button>
+        <button className="button ghost" disabled={!selectedItem.evidenceId && selectedOfflineHolders.length <= 1} onClick={removeOfflineHolder}><Trash2 size={16} /> 홀더 삭제</button>
       </> : <>
         <label><span>그림 너비 {Math.round(selectedPlacement?.widthMm ?? selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm)}mm</span><input type="range" min="32" max="190" step="1" value={selectedPlacement?.widthMm ?? selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm} disabled={!selectedItem?.attachment} onChange={(event) => resizeSelectedImageByWidth(Number(event.target.value))} /></label>
         <label><span>이미지 확대·자르기</span><input type="range" min="0.5" max="3" step="0.05" value={selectedLayout.scale} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, scale: Number(event.target.value) }))} /></label>
@@ -747,9 +769,8 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       <div className="receipt-flow-canvas">{placements.map((placement) => <ReceiptTile key={placement.item.id} project={project} placement={placement} selected={placement.item.attachment?.id === selectedAttachmentId || placement.item.offlineHolder?.id === selectedOfflineHolderId} cropMode={placement.item.attachment?.id === croppingAttachmentId} onSelectAttachment={selectAttachment} onSelectOfflineHolder={selectOfflineHolder} onAspectRatio={registerAspectRatio} onPointerDown={startDrag} onPointerMove={moveDrag} onResizeStart={startResize} onResizeMove={moveResize} onPointerUp={finishPointerEdit} />)}</div>
       <div className="receipt-page-count no-print">{pageIndex + 1} / {receiptPages.length}</div>
     </article>)}
-    {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && (transportFuelEvidence?.attachments.length
-      ? transportFuelEvidence.attachments.map((attachment, index) => <div className="receipt-sheet shared-evidence" key={attachment.id}><ReceiptHeader project={project} /><PrintableAttachment project={project} attachment={attachment} alt={`교통비 공통 주유비 산정 증빙 ${index + 1}`} /></div>)
-      : <div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} /><div className="attachment-placeholder no-print"><Fuel size={35} /><strong>주유비 산정 증빙을 추가하세요</strong><span>주유 영수증과 1:1로 대응하지 않는 공통 자료이며, 필요하면 여러 개를 첨부할 수 있습니다.</span><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><Plus size={17} /> 증빙 여러 개 선택</button>{!project.projectDirectory && <small>프로젝트를 먼저 저장해 주세요.</small>}</div></div>)}
+    {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && !((transportFuelEvidence?.attachments.length ?? 0) > 0 || (transportFuelEvidence?.offlineHolders?.length ?? 0) > 0)
+      && <div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} /><div className="attachment-placeholder no-print"><Fuel size={35} /><strong>주유비 산정 증빙을 추가하세요</strong><span>주유 영수증과 1:1로 대응하지 않는 공통 자료입니다. 온라인 파일이나 인쇄 후 붙일 오프라인 칸을 여러 개 추가할 수 있습니다.</span><div className="attachment-placeholder-actions"><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={17} /> 온라인 파일 선택</button><button className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={17} /> 오프라인 부착칸</button></div>{!project.projectDirectory && <small>온라인 파일은 프로젝트를 먼저 저장해야 첨부할 수 있습니다.</small>}</div></div>}
     {project.expenses.length === 0 && <div className="panel empty-state"><ReceiptText size={40} /><strong>영수증철에 배치할 내역이 없습니다</strong><span>지출을 등록하면 순서대로 출력 페이지가 만들어집니다.</span></div>}
   </section>;
 }
@@ -760,18 +781,22 @@ function ReceiptHeader({ project }: { project: ProjectData }) {
 
 function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachment, onSelectOfflineHolder, onAspectRatio, onPointerDown, onPointerMove, onResizeStart, onResizeMove, onPointerUp }: { project: ProjectData; placement: ReceiptFlowPlacement; selected: boolean; cropMode: boolean; onSelectAttachment: (id: string) => void; onSelectOfflineHolder: (id: string) => void; onAspectRatio: (id: string, aspectRatio: number) => void; onPointerDown: (event: React.PointerEvent<HTMLDivElement>, id: string) => void; onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void; onResizeStart: (event: React.PointerEvent<HTMLButtonElement>, handle: string, placement: ReceiptFlowPlacement) => void; onResizeMove: (event: React.PointerEvent<HTMLButtonElement>) => void; onPointerUp: () => void }) {
   const { item } = placement;
-  const { expense, attachment, offlineHolder, supporting } = item;
+  const { expense, attachment, offlineHolder, evidenceId, supporting } = item;
   const category = getCategory(expense.category);
   const receiptNumber = expense.receiptNumber ?? "?";
-  const offlineHolders = offlineHoldersForExpense(expense);
+  const offlineHolders = evidenceId
+    ? project.categoryEvidence.find((evidence) => evidence.id === evidenceId)?.offlineHolders ?? []
+    : offlineHoldersForExpense(expense);
   const holderIndex = offlineHolder ? offlineHolders.findIndex((holder) => holder.id === offlineHolder.id) : -1;
-  const receiptCode = `${category.number}-${receiptNumber}${offlineHolder && offlineHolders.length > 1 ? ` · 실물 ${holderIndex + 1}/${offlineHolders.length}` : supporting ? " · 추가" : ""}`;
+  const receiptCode = evidenceId
+    ? `주유비 산정 증빙${offlineHolder ? ` · 오프라인 ${holderIndex + 1}/${offlineHolders.length}` : " · 온라인"}`
+    : `${category.number}-${receiptNumber}${offlineHolder && offlineHolders.length > 1 ? ` · 실물 ${holderIndex + 1}/${offlineHolders.length}` : supporting ? " · 추가" : ""}`;
   const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${cropMode ? "crop-mode" : ""} ${offlineHolder ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
       <span className="receipt-screen-tag no-print">{receiptCode} · {expense.content}</span>
       {offlineHolder
-        ? <div className="physical-placeholder"><span className="no-print">실물 영수증을 중앙에 붙이세요</span></div>
+        ? <div className="physical-placeholder"><span className="no-print">{evidenceId ? "산정 증빙을 중앙에 붙이세요" : "실물 영수증을 중앙에 붙이세요"}</span></div>
         : attachment
           ? <PrintableAttachment project={project} attachment={attachment} alt={`${receiptCode} ${expense.content}${supporting ? " 추가 증빙" : " 영수증"}`} editable onAspectRatio={(aspectRatio) => onAspectRatio(attachment.id, aspectRatio)} />
           : <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>온라인 영수증 없음</strong><span>PDF 저장 전에 첨부해 주세요.</span></div>}
@@ -919,7 +944,7 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
         const existing = current.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
         const categoryEvidence = existing
           ? current.categoryEvidence.map((evidence) => evidence.id === existing.id ? { ...evidence, attachments: [...evidence.attachments, ...attachments] } : evidence)
-          : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport" as const, kind: "fuel-calculation" as const, title: "교통비 공통 주유비 산정 증빙", attachments }];
+          : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport" as const, kind: "fuel-calculation" as const, title: "교통비 공통 주유비 산정 증빙", attachments, offlineHolders: [] }];
         return { ...current, categoryEvidence };
       });
       onToast(`공통 주유비 산정 증빙 ${attachments.length}개를 추가했습니다.`);
@@ -933,11 +958,41 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       ? { ...evidence, attachments: evidence.attachments.filter((attachment) => attachment.id !== attachmentId) }
       : evidence),
   }));
+  const addFuelOfflineHolder = () => {
+    const holder: OfflineReceiptHolder = { id: crypto.randomUUID(), widthMm: 82, heightMm: 62 };
+    updateProject((current) => {
+      const existing = current.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
+      const categoryEvidence = existing
+        ? current.categoryEvidence.map((evidence) => evidence.id === existing.id ? { ...evidence, offlineHolders: [...(evidence.offlineHolders ?? []), holder] } : evidence)
+        : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport" as const, kind: "fuel-calculation" as const, title: "교통비 공통 주유비 산정 증빙", attachments: [], offlineHolders: [holder] }];
+      return { ...current, categoryEvidence };
+    });
+    onToast("인쇄 후 산정 자료를 붙일 오프라인 부착칸을 추가했습니다.");
+  };
+  const updateFuelOfflineHolder = (holderId: string, values: Partial<OfflineReceiptHolder>) => updateProject((current) => ({
+    ...current,
+    categoryEvidence: current.categoryEvidence.map((evidence) => evidence.id === fuelEvidence?.id
+      ? { ...evidence, offlineHolders: (evidence.offlineHolders ?? []).map((holder) => holder.id === holderId ? { ...holder, ...values } : holder) }
+      : evidence),
+  }));
+  const removeFuelOfflineHolder = (holderId: string) => updateProject((current) => ({
+    ...current,
+    categoryEvidence: current.categoryEvidence.map((evidence) => evidence.id === fuelEvidence?.id
+      ? { ...evidence, offlineHolders: (evidence.offlineHolders ?? []).filter((holder) => holder.id !== holderId) }
+      : evidence),
+  }));
   return <><div className="modal-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="expense-drawer"><div className="drawer-header"><div><span className="eyebrow">EXPENSE</span><h2>{project.expenses.some((item) => item.id === expense.id) ? "지출 수정" : "새 지출 등록"}</h2></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="drawer-body">
     <div className={`editor-live-reconcile ${liveReconciliation.difference === 0 ? "balanced" : "unbalanced"}`}><div><span>수입</span><strong>{money(liveReconciliation.income.total)}</strong></div><i>−</i><div><span>이 지출 포함 총지출</span><strong>{money(liveReconciliation.expense.total)}</strong></div><i>−</i><div><span>환입액</span><strong>{money(liveReconciliation.returnAmount)}</strong></div><i>=</i><div><span>실시간 차액</span><strong>{money(liveReconciliation.difference)}</strong></div></div>
     <div className="field-grid editor-grid"><label className="field"><span>항목</span><select value={draft.category} onChange={(event) => update("category", event.target.value as CategoryId)}>{CATEGORY_DEFINITIONS.map((category) => <option key={category.id} value={category.id}>{category.number}. {category.label}</option>)}</select></label><Field label="날짜" type="date" value={draft.date} onChange={(value) => update("date", value)} /><label className="field full"><span>내용 (지출 목적)</span><input value={draft.content} onChange={(event) => update("content", event.target.value)} placeholder="예: 첫날 저녁 식사" /><small>어디에 왜 썼는지 적습니다. 금전출납부의 주된 내용으로 들어갑니다.</small></label><Field label="금액" type="number" value={String(draft.amount || "")} onChange={(value) => update("amount", Number(value))} /><Field label="세부 품목 (영수증 내역)" value={draft.itemDetails} placeholder="예: 돈까스 12개, 김밥 24개" helper="영수증에 찍힌 구체적인 품목을 적습니다. 내용과 함께 금전출납부에 반영됩니다." onChange={(value) => update("itemDetails", value)} />{draft.category === "meals" && <Field label="식사 인원" type="number" value={String(draft.mealHeadcount || "")} onChange={(value) => update("mealHeadcount", Number(value))} />}{draft.category === "transport" && <label className="check-field"><input type="checkbox" checked={draft.isFuel} onChange={(event) => update("isFuel", event.target.checked)} /><Fuel size={17} /><span><strong>주유비 지출</strong><small>아래 공통 산정 증빙을 함께 검사합니다.</small></span></label>}<label className="field full note-field"><span>비고</span><textarea value={draft.note} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value, noteMode: "manual" }))} placeholder="공식 금전출납부 비고란에 표시할 내용만" />{draft.category === "teamMinistry" && draft.id === firstTeamMinistryId && <button type="button" className="note-auto-button" onClick={() => setDraft((current) => ({ ...current, note: automaticTeamMinistryNote, noteMode: "auto" }))}><RotateCcw size={13} /> 지원금·회비 비고 자동 작성</button>}</label></div>
     {draft.category === "teamMinistry" && <div className="support-allocation-field selected automatic"><span className="support-allocation-check"><Check size={14} /></span><CircleDollarSign size={20} /><span><strong>팀별사역지원금 사용액으로 자동 계산</strong><small>지원금보다 남은 금액은 환입하고, 초과분은 팀회비 충당액으로 자동 계산합니다.</small></span></div>}
-    {draft.category === "transport" && draft.isFuel && <div className="fuel-evidence-panel"><div className="fuel-evidence-heading"><div><Fuel size={19} /><span><strong>공통 주유비 산정 증빙</strong><small>각 주유 영수증과 1:1로 짝짓지 않습니다. 이 프로젝트의 모든 주유비 지출이 여러 증빙을 함께 사용합니다.</small></span></div><button type="button" className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><Plus size={15} /> 증빙 여러 개 추가</button></div>{fuelEvidence?.attachments.map((attachment, index) => <div className="fuel-evidence-row" key={attachment.id}><span>{index + 1}</span><button type="button" className="attachment-preview-trigger" onClick={() => setPreviewAttachment(attachment)} title="클릭하여 확대 보기">{attachment.originalName}</button><button type="button" className="icon-button" aria-label="주유비 산정 증빙 삭제" onClick={() => removeFuelEvidence(attachment.id)}><X size={14} /></button></div>)}{!fuelEvidence?.attachments.length && <div className="fuel-evidence-empty"><AlertCircle size={15} /> 주유비가 있으면 거리·유류비 산정 자료를 하나 이상 첨부해 주세요. 필요하면 여러 개를 넣을 수 있습니다.</div>}</div>}
+    {draft.category === "transport" && draft.isFuel && <div className="fuel-evidence-panel">
+      <div className="fuel-evidence-heading"><div><Fuel size={19} /><span><strong>공통 주유비 산정 증빙</strong><small>각 주유 영수증과 1:1로 짝짓지 않습니다. 온라인 자료와 인쇄 후 붙일 오프라인 자료를 함께 사용할 수 있습니다.</small></span></div><div className="fuel-evidence-actions"><button type="button" className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={15} /> 온라인 파일</button><button type="button" className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={15} /> 오프라인 칸</button></div></div>
+      {(fuelEvidence?.attachments.length ?? 0) > 0 && <div className="fuel-evidence-subheading">온라인 산정 자료 {fuelEvidence!.attachments.length}개</div>}
+      {fuelEvidence?.attachments.map((attachment, index) => <div className="fuel-evidence-row" key={attachment.id}><span>{index + 1}</span><button type="button" className="attachment-preview-trigger" onClick={() => setPreviewAttachment(attachment)} title="클릭하여 확대 보기">{attachment.originalName}</button><button type="button" className="icon-button" aria-label="온라인 주유비 산정 증빙 삭제" onClick={() => removeFuelEvidence(attachment.id)}><X size={14} /></button></div>)}
+      {(fuelEvidence?.offlineHolders?.length ?? 0) > 0 && <div className="fuel-evidence-subheading">오프라인 부착칸 {fuelEvidence!.offlineHolders!.length}개</div>}
+      {fuelEvidence?.offlineHolders?.map((holder, index) => <div className="offline-holder-row fuel-offline-holder-row" key={holder.id}><span className="holder-index">{index + 1}</span><strong>산정 자료 {index + 1}</strong><label><span>너비</span><input type="number" min="32" max="190" value={holder.widthMm} onChange={(event) => updateFuelOfflineHolder(holder.id, { widthMm: Math.min(190, Math.max(32, Number(event.target.value) || 32)) })} /><em>mm</em></label><b>×</b><label><span>높이</span><input type="number" min="20" max="262" value={holder.heightMm} onChange={(event) => updateFuelOfflineHolder(holder.id, { heightMm: Math.min(262, Math.max(20, Number(event.target.value) || 20)) })} /><em>mm</em></label><button type="button" className="icon-button" aria-label={`오프라인 주유비 산정 증빙 ${index + 1} 삭제`} onClick={() => removeFuelOfflineHolder(holder.id)}><Trash2 size={14} /></button></div>)}
+      {!fuelEvidence?.attachments.length && !fuelEvidence?.offlineHolders?.length && <div className="fuel-evidence-empty"><AlertCircle size={15} /> 온라인 파일을 첨부하거나 오프라인 부착칸을 하나 이상 추가해 주세요. 둘 다 여러 개 사용할 수 있습니다.</div>}
+    </div>}
     <div className="editor-section"><div className="section-title"><div><span>영수증 형태</span><small>실물 원본은 필요한 조각 수만큼 빈 부착칸을 만들고, 온라인 영수증은 이미지로 출력합니다.</small></div></div><div className="choice-cards"><button className={draft.receiptMode === "offline-original" ? "selected" : ""} onClick={() => setDraft((current) => ({ ...current, receiptMode: "offline-original", offlineHolders: offlineHoldersForExpense(current) }))}><ReceiptText size={22} /><strong>오프라인 실물</strong><span>출력 후 원본 부착</span></button><button className={draft.receiptMode === "online-printable" ? "selected" : ""} onClick={() => update("receiptMode", "online-printable")}><FileImage size={22} /><strong>온라인 자료</strong><span>이미지 함께 출력</span></button></div>{draft.receiptMode === "offline-original" && <><label className="original-confirm"><input type="checkbox" checked={draft.originalConfirmed} onChange={(event) => update("originalConfirmed", event.target.checked)} /><Check size={15} /><span>제출할 실물 영수증 원본을 보관 중입니다.</span></label><div className="offline-holder-setup"><div className="offline-holder-heading"><span><strong>실물 부착칸 {offlineHolders.length}개</strong><small>긴 영수증을 잘라 붙일 때 칸을 추가하세요. 각 칸은 영수증철에서 다시 조절할 수 있습니다.</small></span><button type="button" className="button secondary" onClick={addDraftOfflineHolder}><Plus size={15} /> 부착칸 추가</button></div>{offlineHolders.map((holder, index) => <div className="offline-holder-row" key={holder.id}><span className="holder-index">{index + 1}</span><strong>실물 조각 {index + 1}</strong><label><span>너비</span><input type="number" min="32" max="190" value={holder.widthMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { widthMm: Math.min(190, Math.max(32, Number(event.target.value) || 32)) })} /><em>mm</em></label><b>×</b><label><span>높이</span><input type="number" min="20" max="262" value={holder.heightMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { heightMm: Math.min(262, Math.max(20, Number(event.target.value) || 20)) })} /><em>mm</em></label><button type="button" className="icon-button" aria-label={`실물 부착칸 ${index + 1} 삭제`} disabled={offlineHolders.length <= 1} onClick={() => removeDraftOfflineHolder(holder.id)}><Trash2 size={14} /></button></div>)}</div></>}
       <div className="attachment-box"><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진 또는 PDF"}</strong><small>{project.projectDirectory ? "여러 파일을 선택하거나 클립보드 이미지를 바로 붙여넣으세요." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><span className="paste-shortcut"><ClipboardPaste size={15} /> ⌘V / Ctrl+V</span><button className="button secondary" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 여러 개 선택</button></div>{draft.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><FileImage size={17} /><button type="button" className="attachment-preview-trigger" onClick={() => setPreviewAttachment(attachment)} title="클릭하여 확대 보기">{attachment.originalName}</button><select value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select><button className="text-extract-button" onClick={() => runOcr(attachment)} disabled={ocrProgress !== null}>{ocrProgress !== null ? `${Math.round(ocrProgress * 100)}%` : "텍스트 추출"}</button><button aria-label="첨부파일 삭제" onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><X size={15} /></button></div>)}
       {ocr && <div className="ocr-suggestion"><div className="ocr-suggestion-heading"><Sparkles size={18} /><strong>영수증 이미지에서 텍스트 추출 시도</strong><em>{ocr.provider === "clova" ? "CLOVA" : "오픈소스"}</em></div><div className="ocr-values"><button onClick={() => ocr.date && update("date", ocr.date)} disabled={!ocr.date}><span>날짜 후보</span><strong>{ocr.date || "찾지 못함"}</strong></button><button onClick={() => ocr.amount && update("amount", ocr.amount)} disabled={!ocr.amount}><span>금액 후보</span><strong>{ocr.amount ? money(ocr.amount) : "찾지 못함"}</strong></button><button onClick={() => ocr.merchant && update("content", ocr.merchant)} disabled={!ocr.merchant}><span>상호 후보</span><strong title={ocr.merchant || undefined}>{ocr.merchant || "찾지 못함"}</strong></button></div><small>후보를 클릭하면 입력란에 반영됩니다. 추출 결과가 정확하다는 뜻은 아니므로 반드시 영수증 원본과 대조하세요.</small></div>}

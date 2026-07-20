@@ -19,6 +19,7 @@ export interface ReceiptBookItem {
   expense: Expense;
   attachment?: Attachment;
   offlineHolder?: OfflineReceiptHolder;
+  evidenceId?: string;
   supporting: boolean;
 }
 
@@ -42,7 +43,7 @@ export function offlineHoldersForExpense(expense: Expense): OfflineReceiptHolder
 }
 
 export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
-  return project.expenses.flatMap<ReceiptBookItem>((expense) => {
+  const expenseItems = project.expenses.flatMap<ReceiptBookItem>((expense) => {
     if (expense.receiptMode === "offline-original") {
       const supporting = expense.attachments.filter((attachment) => attachment.kind !== "offline-preview");
       return [
@@ -62,6 +63,47 @@ export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
       ...supporting.map((attachment) => ({ id: `${expense.id}-${attachment.id}`, expense, attachment, supporting: true })),
     ];
   });
+  const hasFuelExpense = project.expenses.some((expense) => expense.category === "transport" && expense.isFuel);
+  const fuelEvidence = hasFuelExpense
+    ? project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation")
+    : undefined;
+  if (!fuelEvidence) return expenseItems;
+  const evidenceExpense: Expense = {
+    id: `evidence-${fuelEvidence.id}`,
+    createdOrder: Number.MAX_SAFE_INTEGER,
+    category: "transport",
+    date: "",
+    content: fuelEvidence.title || "주유비 산정 증빙",
+    amount: 0,
+    note: "",
+    receiptMode: "online-printable",
+    originalConfirmed: false,
+    attachments: fuelEvidence.attachments,
+    offlineHolders: fuelEvidence.offlineHolders ?? [],
+    itemDetails: "",
+    isFuel: false,
+    paymentSource: "team",
+    settlementTargetAmount: 0,
+    settledAmount: 0,
+    settlementStatus: "not-applicable",
+  };
+  const evidenceItems: ReceiptBookItem[] = [
+    ...fuelEvidence.attachments.map((attachment) => ({
+      id: `${fuelEvidence.id}-${attachment.id}`,
+      expense: evidenceExpense,
+      attachment,
+      evidenceId: fuelEvidence.id,
+      supporting: false,
+    })),
+    ...(fuelEvidence.offlineHolders ?? []).map((offlineHolder) => ({
+      id: `${fuelEvidence.id}-${offlineHolder.id}`,
+      expense: evidenceExpense,
+      offlineHolder,
+      evidenceId: fuelEvidence.id,
+      supporting: false,
+    })),
+  ];
+  return [...expenseItems, ...evidenceItems];
 }
 
 function clamp(value: number, minimum: number, maximum: number) {

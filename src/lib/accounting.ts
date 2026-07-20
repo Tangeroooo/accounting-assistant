@@ -161,7 +161,7 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
     (evidence) =>
       evidence.category === "transport" &&
       evidence.kind === "fuel-calculation" &&
-      evidence.attachments.length > 0,
+      (evidence.attachments.length > 0 || (evidence.offlineHolders?.length ?? 0) > 0),
   );
   if (hasFuel && !hasFuelEvidence) {
     issues.push({
@@ -169,7 +169,7 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
       severity: "error",
       scope: "evidence",
       title: "교통비 공통 주유비 증빙이 없습니다",
-      detail: "주유비 지출이 있으므로 네이버 지도 거리·유류비 산정 증빙을 하나 이상 등록해 주세요. 여러 파일을 함께 첨부할 수 있습니다.",
+      detail: "주유비 지출이 있으므로 거리·유류비 산정 증빙을 하나 이상 등록해 주세요. 온라인 파일이나 인쇄 후 붙일 오프라인 부착칸을 여러 개 추가할 수 있습니다.",
     });
   }
 

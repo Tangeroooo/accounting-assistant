@@ -150,6 +150,10 @@ describe("교육자료 기반 검산", () => {
       attachments: [{ id: "file", relativePath: "attachments/fuel.png", originalName: "fuel.png", mimeType: "image/png", kind: "other" }],
     }];
     expect(validateProject(project).some((issue) => issue.id === "missing-shared-fuel-evidence")).toBe(false);
+
+    project.categoryEvidence[0].attachments = [];
+    project.categoryEvidence[0].offlineHolders = [{ id: "offline-fuel", widthMm: 82, heightMm: 62 }];
+    expect(validateProject(project).some((issue) => issue.id === "missing-shared-fuel-evidence")).toBe(false);
   });
 
   it("주유비는 공통 산정 증빙과 별도로 실물 영수증 원본을 요구한다", () => {

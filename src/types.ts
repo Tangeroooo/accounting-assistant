@@ -111,6 +111,7 @@ export interface CategoryEvidence {
   kind: "fuel-calculation" | "other";
   title: string;
   attachments: Attachment[];
+  offlineHolders?: OfflineReceiptHolder[];
 }
 
 export interface ProjectData {
