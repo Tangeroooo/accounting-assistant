@@ -24,6 +24,7 @@
       </a>
       <nav aria-label="주요 메뉴">
         <a href="./guide.html">처음 사용 가이드</a>
+        <a href="#install-help">설치 도움</a>
         <a href="#features">주요 기능</a>
         <a href="#screens">화면 보기</a>
         <a href="#safety">프로젝트 보관</a>
@@ -98,9 +99,54 @@
 
         <div class="install-notice">
           <span aria-hidden="true">i</span>
-          <p><strong>첫 실행 때 운영체제 보안 안내가 나올 수 있습니다.</strong> 현재 시험 배포본은 Apple 공증 및 Windows 게시자 인증서를 적용하기 전 단계입니다. 반드시 이 공식 페이지에서 내려받은 파일인지 확인한 뒤 실행해 주세요.</p>
+          <p><strong>첫 실행 때 운영체제 보안 안내가 나올 수 있습니다.</strong> 현재 시험 배포본은 Apple 공증 및 Windows 게시자 인증서를 적용하기 전 단계입니다. 아래 설치 도움을 확인하고, 반드시 이 공식 페이지에서 내려받은 파일에만 1회 실행을 허용해 주세요.</p>
           <a href="https://github.com/Tangeroooo/accounting-assistant/releases/latest" target="_blank" rel="noreferrer">모든 릴리스 파일 보기 ↗</a>
         </div>
+
+        <section class="install-help" id="install-help" aria-labelledby="install-help-title">
+          <div class="install-help-heading">
+            <span class="eyebrow">FIRST LAUNCH HELP</span>
+            <h2 id="install-help-title">보안 안내가 나오면 이렇게 하세요</h2>
+            <p>보안 기능을 끄지 않아도 됩니다. 이 페이지에서 받은 파일인지 먼저 확인한 뒤, 운영체제에서 바른장부만 한 번 허용하세요.</p>
+          </div>
+
+          <div class="security-guide-grid">
+            <article class="security-guide-card mac-guide">
+              <div class="security-guide-title">
+                <span class="security-os-badge apple-badge" aria-hidden="true">●</span>
+                <div><span>macOS</span><h3>“Apple이 악성 소프트웨어가 있는지 확인할 수 없음”</h3></div>
+              </div>
+              <ol>
+                <li><span>1</span><p>이 페이지에서 받은 <strong>DMG</strong>인지 확인하고 앱을 한 번 실행해 안내를 띄웁니다.</p></li>
+                <li><span>2</span><p><strong>시스템 설정 → 개인정보 보호 및 보안</strong>으로 이동합니다.</p></li>
+                <li><span>3</span><p>아래 보안 영역에서 바른장부의 <strong>확인 없이 열기</strong>를 누릅니다.</p></li>
+                <li><span>4</span><p>암호나 Touch ID로 승인한 뒤 다시 나타난 창에서 <strong>열기</strong>를 선택합니다.</p></li>
+              </ol>
+              <div class="security-stop"><strong>중단해야 하는 경우</strong><span>“컴퓨터를 손상시킵니다”, “앱이 손상되었습니다”처럼 실제 악성코드·변조를 알리는 문구라면 실행하지 말고 알려주세요.</span></div>
+              <a class="security-source" href="https://support.apple.com/102445" target="_blank" rel="noreferrer">Apple 공식 안내 보기 ↗</a>
+            </article>
+
+            <article class="security-guide-card windows-guide">
+              <div class="security-guide-title">
+                <span class="security-os-badge windows-badge" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <div><span>Windows 10 · 11</span><h3>“Windows의 PC 보호” 또는 “인식할 수 없는 앱”</h3></div>
+              </div>
+              <ol>
+                <li><span>1</span><p>파일 이름이 <strong>windows-x64-setup.exe</strong>로 끝나는지 확인합니다.</p></li>
+                <li><span>2</span><p>Microsoft Defender SmartScreen 창에서 <strong>추가 정보</strong>를 선택합니다.</p></li>
+                <li><span>3</span><p>앱 이름을 확인하고 <strong>실행</strong> 또는 <strong>그래도 실행</strong>을 선택합니다.</p></li>
+                <li><span>4</span><p>사용자 계정 컨트롤 창이 나오면 앱 이름을 다시 확인하고 <strong>예</strong>를 누릅니다.</p></li>
+              </ol>
+              <div class="security-stop"><strong>중단해야 하는 경우</strong><span>Windows 보안이 바이러스나 위협 이름을 표시하거나 회사·교회 관리 PC가 실행을 차단하면 보호 기능을 끄지 말고 관리자에게 문의하세요.</span></div>
+              <a class="security-source" href="https://learn.microsoft.com/windows/apps/package-and-deploy/smartscreen-reputation" target="_blank" rel="noreferrer">Microsoft 공식 안내 보기 ↗</a>
+            </article>
+          </div>
+
+          <div class="security-principle">
+            <span aria-hidden="true">✓</span>
+            <p><strong>공통 원칙</strong> Gatekeeper, Microsoft Defender, SmartScreen을 통째로 끄지 마세요. 공식 다운로드 페이지의 설치 파일만 예외로 허용하는 것이 안전합니다.</p>
+          </div>
+        </section>
       </section>
 
       <section class="features-section" id="features">
@@ -179,6 +225,7 @@
           <details><summary>앱을 다시 설치하면 프로젝트가 사라지나요?<span>＋</span></summary><p>아니요. 사용자가 선택한 위치의 .barun 파일은 앱 설치 영역과 분리되어 있습니다. 새로 설치한 앱에서 같은 파일을 열면 됩니다.</p></details>
           <details><summary>한글 Excel과 영수증철 양식이 바뀌지는 않나요?<span>＋</span></summary><p>제공된 공식 템플릿 사본을 읽어 결과를 만들며 템플릿 자체에는 쓰지 않습니다. 금전출납부는 기존 서식을 유지하고 필요한 행만 같은 서식으로 늘립니다.</p></details>
           <details><summary>새 버전은 어떻게 설치하나요?<span>＋</span></summary><p>앱이 GitHub Releases에서 새 버전을 확인해 알려줍니다. 프로젝트와 업데이트 전 백업을 저장한 뒤 서명이 확인된 파일만 설치합니다.</p></details>
+          <details><summary>첫 실행 때 보안 경고가 나오면 어떻게 하나요?<span>＋</span></summary><p>다운로드 영역의 <a href="#install-help">설치 도움</a>에서 macOS Gatekeeper와 Windows SmartScreen 대응 순서를 확인하세요. 운영체제의 보안 기능 전체를 끄지 말고, 이 공식 페이지에서 받은 바른장부 설치 파일만 한 번 허용해야 합니다.</p></details>
         </div>
       </section>
 
