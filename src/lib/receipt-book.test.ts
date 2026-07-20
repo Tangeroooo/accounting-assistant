@@ -140,6 +140,10 @@ describe("영수증철 페이지 구성", () => {
     project.expenses[0].attachments[0].layout = { ...baseLayout, ...west };
     const afterWest = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
     expect(afterWest.xMm + afterWest.widthMm).toBeCloseTo(before.xMm + before.widthMm, 6);
+
+    project.expenses[0].attachments[0].layout = { ...baseLayout, ...west, frameOffsetXMm: 0, frameOffsetYMm: 0 };
+    const completed = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
+    expect(completed.xMm).toBeCloseTo((190 - completed.widthMm) / 2, 6);
   });
 
   it("한 페이지만 한 열로 채워지면 열 전체를 가로 중앙에 둔다", () => {

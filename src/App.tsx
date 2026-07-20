@@ -703,20 +703,28 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     dragRef.current = null;
     resizeRef.current = null;
   };
+  const finishCropping = (attachmentId: string) => {
+    updateAttachmentLayout(attachmentId, (layout) => ({
+      ...layout,
+      frameOffsetXMm: 0,
+      frameOffsetYMm: 0,
+    }));
+    setCroppingAttachmentId(null);
+  };
   const selectAttachment = (attachmentId: string) => {
     setSelectedAttachmentId(attachmentId);
     setSelectedOfflineHolderId(null);
-    if (croppingAttachmentId && croppingAttachmentId !== attachmentId) setCroppingAttachmentId(null);
+    if (croppingAttachmentId && croppingAttachmentId !== attachmentId) finishCropping(croppingAttachmentId);
   };
   const selectOfflineHolder = (holderId: string) => {
+    if (croppingAttachmentId) finishCropping(croppingAttachmentId);
     setSelectedOfflineHolderId(holderId);
     setSelectedAttachmentId(null);
-    setCroppingAttachmentId(null);
   };
   const toggleCropMode = () => {
     if (!selectedAttachmentId) return;
     if (croppingAttachmentId === selectedAttachmentId) {
-      setCroppingAttachmentId(null);
+      finishCropping(selectedAttachmentId);
       return;
     }
     if (selectedPlacement) {
