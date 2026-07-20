@@ -125,6 +125,14 @@ export function receiptWatermarkLabel(item: ReceiptBookItem) {
   return `${categoryName}-${receiptNumber}-${item.receiptSequence}`;
 }
 
+/**
+ * 내보낸 실물 영수증 부착칸에도 편집 화면의 워터마크와 동일한 규칙으로
+ * 항목과 영수증 순서를 식별할 수 있는 라벨을 남긴다.
+ */
+export function exportedOfflinePlaceholderLabel(item: ReceiptBookItem) {
+  return receiptWatermarkLabel(item);
+}
+
 export function offlinePlaceholderLabel(item: ReceiptBookItem) {
   if (item.evidenceId) {
     const holders = item.expense.offlineHolders ?? [];

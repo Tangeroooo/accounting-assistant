@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, exportedOfflinePlaceholderLabel, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -229,6 +229,10 @@ describe("영수증철 페이지 구성", () => {
       "영수증 3-1 · 1/2",
       "영수증 3-1 · 2/2",
     ]);
+    expect(items.map(exportedOfflinePlaceholderLabel)).toEqual([
+      "식대간식비-1-1",
+      "식대간식비-1-2",
+    ]);
   });
 
   it("항목이 바뀌면 남은 공간과 관계없이 새 페이지에서 시작한다", () => {
@@ -268,6 +272,9 @@ describe("영수증철 페이지 구성", () => {
     ]);
     expect(items.slice(-2).map(receiptWatermarkLabel)).toEqual([
       "교통비-공통증빙-1",
+      "교통비-공통증빙-2",
+    ]);
+    expect(items.slice(-1).map(exportedOfflinePlaceholderLabel)).toEqual([
       "교통비-공통증빙-2",
     ]);
     expect(layoutReceiptBookItems(items).flat().at(-1)).toMatchObject({ widthMm: 90, heightMm: 70 });

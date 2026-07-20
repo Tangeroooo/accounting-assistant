@@ -7,8 +7,8 @@ import { attachmentAbsolutePath, readAttachmentBytes } from "./desktop";
 import {
   buildReceiptBookItems,
   DEFAULT_IMAGE_LAYOUT,
+  exportedOfflinePlaceholderLabel,
   layoutReceiptBookItems,
-  offlinePlaceholderLabel,
 } from "./receipt-book";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -178,7 +178,7 @@ export async function renderReceiptBookObjectPages(project: ProjectData): Promis
       if (!context) throw new Error("영수증철 개체를 만들 수 없습니다.");
       const bounds = { x: 0, y: 0, width: objectCanvas.width, height: objectCanvas.height };
       if (item.offlineHolder) {
-        drawOfflinePlaceholder(context, bounds, offlinePlaceholderLabel(item));
+        drawOfflinePlaceholder(context, bounds, exportedOfflinePlaceholderLabel(item));
       } else if (item.attachment) {
         const rendered = renderedAttachments.get(item.attachment.id);
         if (!rendered) return [];
@@ -192,8 +192,8 @@ export async function renderReceiptBookObjectPages(project: ProjectData): Promis
         yMm: 25 + placement.yMm,
         widthMm: placement.widthMm,
         heightMm: placement.heightMm,
-        name: item.attachment?.originalName ?? offlinePlaceholderLabel(item),
-        description: item.attachment?.originalName ?? `${offlinePlaceholderLabel(item)} 실물 영수증 부착 영역`,
+        name: item.attachment?.originalName ?? exportedOfflinePlaceholderLabel(item),
+        description: item.attachment?.originalName ?? `${exportedOfflinePlaceholderLabel(item)} 실물 영수증 부착 영역`,
       }];
     }),
   }));
