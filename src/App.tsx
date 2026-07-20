@@ -69,12 +69,14 @@ import {
   saveProjectPackageAs,
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { createReceiptBookDocx } from "./lib/receipt-docx";
 import { createReceiptBookPdf } from "./lib/receipt-pdf";
 import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
 import ProjectOnboarding from "./components/ProjectOnboarding";
 
 type ViewId = "overview" | "accounting" | "receipts" | "settlements" | "settings";
+type ReceiptExportFormat = "pdf" | "docx";
 
 const navItems: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "진행 현황", icon: LayoutDashboard },
@@ -163,7 +165,8 @@ function App() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [toast, setToast] = useState<string | null>(null);
-  const [outputBusy, setOutputBusy] = useState<"excel" | "pdf" | null>(null);
+  const [outputBusy, setOutputBusy] = useState<"excel" | ReceiptExportFormat | null>(null);
+  const [receiptExportFormat, setReceiptExportFormat] = useState<ReceiptExportFormat>("pdf");
   const [showOnboarding, setShowOnboarding] = useState(
     isTauri() && !project.projectDirectory && !project.meta.teamName && project.expenses.length === 0,
   );
@@ -341,15 +344,19 @@ function App() {
     } finally { setOutputBusy(null); }
   };
 
-  const handleReceiptPdf = async () => {
-    setOutputBusy("pdf");
+  const handleReceiptExport = async () => {
+    const format = receiptExportFormat;
+    setOutputBusy(format);
     try {
-      const bytes = await createReceiptBookPdf(project);
-      const name = `${project.meta.community || "공동체"}-${project.meta.teamName || "팀"}-영수증철.pdf`;
-      const path = await saveBinaryWithDialog(bytes, name, "pdf");
-      if (path !== null) setToast("편집한 배치대로 영수증철 PDF를 저장했습니다.");
+      const bytes = format === "pdf"
+        ? await createReceiptBookPdf(project)
+        : await createReceiptBookDocx(project);
+      const extension = format === "pdf" ? "pdf" : "docx";
+      const name = `${project.meta.community || "공동체"}-${project.meta.teamName || "팀"}-영수증철.${extension}`;
+      const path = await saveBinaryWithDialog(bytes, name, format);
+      if (path !== null) setToast(`편집한 배치대로 영수증철 ${format === "pdf" ? "PDF" : "Word 문서"}를 저장했습니다.`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "영수증철 PDF를 만들지 못했습니다.");
+      setToast(error instanceof Error ? error.message : `영수증철 ${format === "pdf" ? "PDF" : "Word 문서"}를 만들지 못했습니다.`);
     } finally { setOutputBusy(null); }
   };
 
@@ -381,7 +388,7 @@ function App() {
         <div className="sidebar-guide">
           <Sparkles size={18} />
           <strong>{incomes.total === 0 ? "첫 단계: 수입 입력" : project.expenses.length === 0 ? "다음 단계: 지출 입력" : issues.length ? `확인할 항목 ${issues.length}개` : "산출물 준비 완료"}</strong>
-          <p>{incomes.total === 0 ? "회비 단가와 인원수, 지원금을 먼저 입력하세요." : project.expenses.length === 0 ? "첫 영수증을 보면서 날짜·내용·금액을 등록해 보세요." : issues.length ? "회계 입력·검토에서 누락 항목과 검산 차액을 확인하세요." : "위쪽 산출물 버튼으로 Excel과 PDF를 저장할 수 있습니다."}</p>
+          <p>{incomes.total === 0 ? "회비 단가와 인원수, 지원금을 먼저 입력하세요." : project.expenses.length === 0 ? "첫 영수증을 보면서 날짜·내용·금액을 등록해 보세요." : issues.length ? "회계 입력·검토에서 누락 항목과 검산 차액을 확인하세요." : "위쪽 산출물 버튼으로 Excel과 PDF 또는 Word 영수증철을 저장할 수 있습니다."}</p>
         </div>
       </aside>
 
@@ -397,7 +404,7 @@ function App() {
             </button>
             <span className="top-action-divider" />
             <button className="button output-button excel" onClick={handleExcelExport} disabled={outputBusy !== null} title={issues.some((issue) => issue.severity === "error") ? "검토 중인 상태도 중간 확인용 Excel로 저장할 수 있습니다." : undefined}><FileSpreadsheet size={17} /> {outputBusy === "excel" ? "Excel 생성 중" : "Excel 저장"}</button>
-            <button className="button output-button pdf" onClick={handleReceiptPdf} disabled={outputBusy !== null || project.expenses.length === 0}><Download size={17} /> {outputBusy === "pdf" ? "PDF 생성 중" : "영수증철 PDF"}</button>
+            <ReceiptExportControl format={receiptExportFormat} onFormatChange={setReceiptExportFormat} onExport={handleReceiptExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} compact />
           </div>
         </header>
 
@@ -405,7 +412,7 @@ function App() {
           <Overview project={project} totals={totals} incomes={incomes} issues={issues} setView={setView} setEditingExpense={setEditingExpense} />
         )}
         {view === "accounting" && <AccountingView project={project} incomes={incomes} totals={totals} issues={issues} updateProject={updateProject} onAdd={() => setEditingExpense(newExpense(project))} onEdit={setEditingExpense} onDelete={(id) => updateProject((current) => ({ ...current, expenses: current.expenses.filter((expense) => expense.id !== id) }))} />}
-        {view === "receipts" && <ReceiptBookView project={project} updateProject={updateProject} onSavePdf={handleReceiptPdf} pdfBusy={outputBusy === "pdf"} />}
+        {view === "receipts" && <ReceiptBookView project={project} updateProject={updateProject} exportFormat={receiptExportFormat} onExportFormatChange={setReceiptExportFormat} onExport={handleReceiptExport} outputBusy={outputBusy} />}
         {view === "settlements" && <SettlementView project={project} summaries={settlements} updateProject={updateProject} />}
         {view === "settings" && (
           <SettingsView project={project} projectFilePath={projectFilePath} updateProject={updateProject} />
@@ -567,7 +574,7 @@ function AccountingView({ project, incomes, totals, issues, updateProject, onAdd
   </section>;
 }
 
-function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { project: ProjectData; updateProject: (updater: (project: ProjectData) => ProjectData) => void; onSavePdf: () => void; pdfBusy: boolean }) {
+function ReceiptBookView({ project, updateProject, exportFormat, onExportFormatChange, onExport, outputBusy }: { project: ProjectData; updateProject: (updater: (project: ProjectData) => ProjectData) => void; exportFormat: ReceiptExportFormat; onExportFormatChange: (format: ReceiptExportFormat) => void; onExport: () => void; outputBusy: "excel" | ReceiptExportFormat | null }) {
   const [selectedAttachmentId, setSelectedAttachmentId] = useState<string | null>(null);
   const [selectedOfflineHolderId, setSelectedOfflineHolderId] = useState<string | null>(null);
   const [croppingAttachmentId, setCroppingAttachmentId] = useState<string | null>(null);
@@ -792,8 +799,8 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     });
     setSelectedOfflineHolderId(holder.id);
   };
-  return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." action={<button className="button accent no-print" onClick={onSavePdf} disabled={pdfBusy || project.expenses.length === 0}><Download size={18} /> {pdfBusy ? "PDF 생성 중" : "PDF 저장"}</button>} />
-    <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림·홀더 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>세로 우선 자동 배치</strong><span>위→아래로 채운 뒤 다음 열로 이동 · 크기 변경 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 PDF에 넣지 않고 인쇄 후 직접 기입</div></div>
+  return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." action={<ReceiptExportControl format={exportFormat} onFormatChange={onExportFormatChange} onExport={onExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} />} />
+    <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림·홀더 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>세로 우선 자동 배치</strong><span>위→아래로 채운 뒤 다음 열로 이동 · 크기 변경 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 내보낸 파일에 넣지 않고 인쇄 후 직접 기입</div></div>
     {selectedItem && <div className="receipt-floating-toolbar-anchor no-print"><div className={`panel receipt-editor-controls active ${selectedItem.offlineHolder ? "holder-controls" : ""}`}>
       <div className="editor-selection">{selectedItem.offlineHolder ? <ReceiptText size={22} /> : <FileImage size={22} />}<div><strong>{selectedItem.attachment?.originalName ?? "오프라인 실물 부착 공간"}</strong><span>{getCategory(selectedItem.expense.category).label} · {selectedItem.expense.content}</span></div></div>
       {selectedItem.offlineHolder ? <>
@@ -837,6 +844,10 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
     "--watermark-pad-x": `${Math.max(1, Math.min(4, placement.widthMm / 22))}mm`,
     "--watermark-pad-y": `${Math.max(0.6, Math.min(2.2, placement.heightMm / 28))}mm`,
   } as React.CSSProperties;
+  const holderDimensionsLabel = offlineHolder ? offlineHolderDimensionsLabel(offlineHolder) : "";
+  const holderDimensionsStyle = offlineHolder ? {
+    fontSize: `${Math.min(14, watermarkFontSizePx(holderDimensionsLabel, placement.widthMm, placement.heightMm))}px`,
+  } : undefined;
   const receiptCode = evidenceId
     ? `주유비 산정 증빙${offlineHolder ? ` · 오프라인 ${holderIndex + 1}/${offlineHolders.length}` : " · 온라인"}`
     : `${category.number}-${receiptNumber}${offlineHolder && offlineHolders.length > 1 ? ` · 실물 ${holderIndex + 1}/${offlineHolders.length}` : supporting ? " · 추가" : ""}`;
@@ -844,12 +855,13 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${cropMode ? "crop-mode" : ""} ${offlineHolder ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
     {cropMode && attachment && <PrintableAttachment project={project} attachment={attachment} alt="자르기 중인 원본 그림" frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} ghost />}
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
-      {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>PDF 파일로 내보낼 때 포함되지 않습니다</small></div>}
+      {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>내보낸 PDF·Word에는 포함되지 않습니다</small></div>}
+      {offlineHolder && <span className="offline-holder-dimensions" style={holderDimensionsStyle}>{holderDimensionsLabel}</span>}
       {offlineHolder
         ? <div className="physical-placeholder"><strong>{offlinePlaceholderLabel(item)}</strong><small>{evidenceId ? "산정 증빙을 중앙에 붙이세요" : "실물 영수증을 중앙에 붙이세요"}</small></div>
         : attachment
           ? <PrintableAttachment project={project} attachment={attachment} alt={`${receiptCode} ${expense.content}${supporting ? " 추가 증빙" : " 영수증"}`} frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} editable onAspectRatio={(aspectRatio) => onAspectRatio(attachment.id, aspectRatio)} />
-          : <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>온라인 영수증 없음</strong><span>PDF 저장 전에 첨부해 주세요.</span></div>}
+          : <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>온라인 영수증 없음</strong><span>내보내기 전에 첨부해 주세요.</span></div>}
     </div>
     {selected && (attachment || offlineHolder) && <div className={`picture-selection no-print ${cropMode ? "cropping" : "resizing"}`}>
       {handles.map((handle) => <button key={handle} type="button" className={`picture-handle handle-${handle}`} aria-label={`${cropMode ? "자르기" : offlineHolder ? "홀더 크기 조절" : "그림 크기 조절"} ${handle}`} onPointerDown={(event) => onResizeStart(event, handle, placement)} onPointerMove={onResizeMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />)}
@@ -1084,6 +1096,17 @@ function AttachmentPreviewModal({ project, attachment, onClose }: { project: Pro
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) { return <div className="page-heading"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>; }
+
+function ReceiptExportControl({ format, onFormatChange, onExport, busy, disabled, compact = false }: { format: ReceiptExportFormat; onFormatChange: (format: ReceiptExportFormat) => void; onExport: () => void; busy: "excel" | ReceiptExportFormat | boolean | null; disabled: boolean; compact?: boolean }) {
+  const isBusy = busy === "pdf" || busy === "docx" || busy === true;
+  return <div className={`receipt-export-control no-print ${compact ? "compact" : ""}`}>
+    <select aria-label="영수증철 파일 형식" value={format} onChange={(event) => onFormatChange(event.target.value as ReceiptExportFormat)} disabled={isBusy}>
+      <option value="pdf">PDF (.pdf)</option>
+      <option value="docx">Word (.docx)</option>
+    </select>
+    <button className={`button output-button ${format === "pdf" ? "pdf" : "word"}`} onClick={onExport} disabled={disabled}><Download size={17} /> {isBusy ? `${format === "pdf" ? "PDF" : "Word"} 생성 중` : compact ? "영수증철 저장" : "내보내기"}</button>
+  </div>;
+}
 function Field({ label, value, onChange, type = "text", placeholder, helper }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string; helper?: string }) { return <label className="field"><span>{label}</span><input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />{helper && <small>{helper}</small>}</label>; }
 
 function newExpense(project: ProjectData): Expense {

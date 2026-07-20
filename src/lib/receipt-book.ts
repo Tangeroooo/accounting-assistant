@@ -148,6 +148,13 @@ export function offlinePlaceholderLabel(item: ReceiptBookItem) {
     : receiptCode;
 }
 
+const formatCentimeters = (millimeters: number) =>
+  (millimeters / 10).toFixed(1).replace(/\.0$/, "");
+
+export function offlineHolderDimensionsLabel(holder: OfflineReceiptHolder) {
+  return `가로 ${formatCentimeters(holder.widthMm)}cm × 세로 ${formatCentimeters(holder.heightMm)}cm`;
+}
+
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }

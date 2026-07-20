@@ -8,6 +8,7 @@ import {
   buildReceiptBookItems,
   DEFAULT_IMAGE_LAYOUT,
   layoutReceiptBookItems,
+  offlineHolderDimensionsLabel,
   offlinePlaceholderLabel,
 } from "./receipt-book";
 
@@ -35,12 +36,6 @@ function drawPageHeader(context: CanvasRenderingContext2D, project: ProjectData)
   context.textBaseline = "middle";
   context.font = `700 ${Math.round(mm(5))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
   context.fillText(`${project.meta.community || "○○○"} 공동체 - 국내 ${project.meta.teamName || "○○○팀"} - 영수증철`, mm(PAGE_WIDTH_MM / 2), mm(12));
-  context.strokeStyle = "#cfd4dc";
-  context.lineWidth = Math.max(1, mm(0.2));
-  context.beginPath();
-  context.moveTo(mm(10), mm(20));
-  context.lineTo(mm(200), mm(20));
-  context.stroke();
 }
 
 async function renderPdfFirstPage(bytes: Uint8Array) {
@@ -117,6 +112,7 @@ function drawOfflinePlaceholder(
   context: CanvasRenderingContext2D,
   bounds: { x: number; y: number; width: number; height: number },
   label: string,
+  dimensionsLabel: string,
 ) {
   const width = mm(32);
   const height = mm(17);
@@ -136,10 +132,13 @@ function drawOfflinePlaceholder(
   context.fillStyle = "#7c8592";
   context.font = `500 ${Math.round(mm(1.55))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
   context.fillText("실물을 중앙에 붙이세요", x + width / 2, y + mm(11), width - mm(2));
+  context.fillStyle = "#64748b55";
+  context.font = `800 ${Math.round(mm(2.7))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
+  context.fillText(dimensionsLabel, bounds.x + bounds.width / 2, bounds.y + bounds.height * 0.86, bounds.width * 0.88);
   context.restore();
 }
 
-export async function createReceiptBookPdf(project: ProjectData) {
+export async function renderReceiptBookPageCanvases(project: ProjectData) {
   const items = buildReceiptBookItems(project);
   const renderedAttachments = new Map<string, HTMLCanvasElement>();
   const measuredAspectRatios = new Map<string, number>();
@@ -150,13 +149,13 @@ export async function createReceiptBookPdf(project: ProjectData) {
     measuredAspectRatios.set(item.attachment.id, rendered.width / rendered.height);
   }
   const pages = layoutReceiptBookItems(items, measuredAspectRatios);
-  if (pages.length === 0) throw new Error("PDF로 저장할 영수증이 없습니다.");
+  if (pages.length === 0) throw new Error("내보낼 영수증이 없습니다.");
   const pageCanvases: HTMLCanvasElement[] = [];
 
   for (const placements of pages) {
     const canvas = createPageCanvas();
     const context = canvas.getContext("2d");
-    if (!context) throw new Error("영수증철 PDF 페이지를 만들 수 없습니다.");
+    if (!context) throw new Error("영수증철 페이지를 만들 수 없습니다.");
     drawPageHeader(context, project);
     for (const placement of placements) {
       const { item } = placement;
@@ -167,7 +166,7 @@ export async function createReceiptBookPdf(project: ProjectData) {
         height: mm(placement.heightMm),
       };
       if (item.offlineHolder) {
-        drawOfflinePlaceholder(context, bounds, offlinePlaceholderLabel(item));
+        drawOfflinePlaceholder(context, bounds, offlinePlaceholderLabel(item), offlineHolderDimensionsLabel(item.offlineHolder));
       } else if (item.attachment) {
         const rendered = renderedAttachments.get(item.attachment.id);
         if (rendered) drawPlacedImage(context, rendered, bounds, item.attachment);
@@ -176,6 +175,11 @@ export async function createReceiptBookPdf(project: ProjectData) {
     pageCanvases.push(canvas);
   }
 
+  return pageCanvases;
+}
+
+export async function createReceiptBookPdf(project: ProjectData) {
+  const pageCanvases = await renderReceiptBookPageCanvases(project);
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   pageCanvases.forEach((canvas, index) => {
     if (index > 0) pdf.addPage("a4", "portrait");

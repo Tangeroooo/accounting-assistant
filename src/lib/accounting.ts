@@ -273,7 +273,7 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
         scope: "evidence",
         expenseId: item.id,
         title: "온라인 영수증 파일이 없습니다",
-        detail: "영수증철 PDF에 넣을 이미지 또는 PDF를 등록해 주세요.",
+        detail: "영수증철에 넣을 이미지 또는 PDF를 등록해 주세요.",
       });
     }
     if (item.category === "meals" && !item.mealHeadcount) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlinePlaceholderLabel, pictureLayoutGeometry, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -102,6 +102,11 @@ describe("영수증철 페이지 구성", () => {
     expect(watermarkFontSizePx("교통비-1-1", 120, 90)).toBe(20);
     expect(watermarkFontSizePx("팀별사역비-공통증빙-12", 32, 20)).toBeGreaterThanOrEqual(5);
     expect(watermarkFontSizePx("팀별사역비-공통증빙-12", 32, 20)).toBeLessThan(10);
+  });
+
+  it("실물 영수증 홀더 크기를 가로·세로 cm 단위로 표시한다", () => {
+    expect(offlineHolderDimensionsLabel({ id: "holder", widthMm: 82, heightMm: 62 })).toBe("가로 8.2cm × 세로 6.2cm");
+    expect(offlineHolderDimensionsLabel({ id: "holder", widthMm: 100, heightMm: 50 })).toBe("가로 10cm × 세로 5cm");
   });
 
   it("일반 모드의 모서리 핸들은 비율을 유지하고 자르기 핸들은 한쪽 프레임만 바꾼다", () => {

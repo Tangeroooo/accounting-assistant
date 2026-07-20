@@ -166,7 +166,7 @@ export async function importClipboardAttachment(projectDirectory: string, file: 
   return { id: crypto.randomUUID(), relativePath, originalName, mimeType, kind: "online-receipt" };
 }
 
-export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: string, fileType: "excel" | "pdf" = "excel") {
+export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: string, fileType: "excel" | "pdf" | "docx" = "excel") {
   if (!isTauri()) {
     const blob = new Blob([bytes as BlobPart]);
     const url = URL.createObjectURL(blob);
@@ -179,7 +179,11 @@ export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: strin
   }
   const path = await save({
     defaultPath: defaultName,
-    filters: [fileType === "pdf" ? { name: "PDF 문서", extensions: ["pdf"] } : { name: "Excel 통합문서", extensions: ["xlsx"] }],
+    filters: [fileType === "pdf"
+      ? { name: "PDF 문서", extensions: ["pdf"] }
+      : fileType === "docx"
+        ? { name: "Microsoft Word 문서", extensions: ["docx"] }
+        : { name: "Excel 통합문서", extensions: ["xlsx"] }],
   });
   if (!path) return null;
   await invoke("write_binary_file", { path, bytes: Array.from(bytes) });

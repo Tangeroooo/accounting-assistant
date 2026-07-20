@@ -90,7 +90,7 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
             </button>
           </div>
           <div className="storage-choice-guide"><span>1</span><strong>저장 위치 선택</strong><ArrowRight size={15} /><span>2</span><strong>폴더·파일 이름 지정</strong><ArrowRight size={15} /><span>3</span><strong>회계 입력 시작</strong></div>
-          <div className="onboarding-output-preview"><div><FileSpreadsheet size={22} /><span><strong>회계보고서 Excel</strong><small>프로젝트에서 생성</small></span></div><ArrowRight size={16} /><div><ReceiptText size={22} /><span><strong>영수증철 PDF</strong><small>프로젝트에서 생성</small></span></div></div>
+          <div className="onboarding-output-preview"><div><FileSpreadsheet size={22} /><span><strong>회계보고서 Excel</strong><small>프로젝트에서 생성</small></span></div><ArrowRight size={16} /><div><ReceiptText size={22} /><span><strong>영수증철 PDF / Word</strong><small>원하는 형식으로 생성</small></span></div></div>
           <div className="safe-note"><Sparkles size={18} /><span><strong>{projectFilePath ? "이 위치에 자동 저장됩니다." : "저장 위치는 한 번만 선택하면 됩니다."}</strong><small>{projectFilePath ? "회계 입력을 시작한 뒤 변경한 내용과 첨부 이미지가 자동으로 저장됩니다." : "선택한 .barun 파일 하나에 입력 내용과 첨부 이미지를 함께 보관합니다."}</small></span></div>
         </>}
         <div className="onboarding-actions">
