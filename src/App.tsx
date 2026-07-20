@@ -70,7 +70,7 @@ import {
   saveProjectPackageAs,
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkDisplayLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookDocx } from "./lib/receipt-docx";
 import { createReceiptBookPdf, renderReceiptBookPageCanvases } from "./lib/receipt-pdf";
 import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
@@ -419,7 +419,7 @@ function App() {
           <Overview project={project} totals={totals} incomes={incomes} issues={issues} setView={setView} setEditingExpense={setEditingExpense} />
         )}
         {view === "accounting" && <AccountingView project={project} incomes={incomes} totals={totals} issues={issues} updateProject={updateProject} onAdd={() => setEditingExpense(newExpense(project))} onEdit={setEditingExpense} onDelete={(id) => updateProject((current) => ({ ...current, expenses: current.expenses.filter((expense) => expense.id !== id) }))} />}
-        {view === "receipts" && <ReceiptBookView project={project} updateProject={updateProject} exportFormat={receiptExportFormat} onExportFormatChange={setReceiptExportFormat} onExport={handleReceiptExport} outputBusy={outputBusy} />}
+        {view === "receipts" && <ReceiptBookView project={project} updateProject={updateProject} onEditExpense={setEditingExpense} exportFormat={receiptExportFormat} onExportFormatChange={setReceiptExportFormat} onExport={handleReceiptExport} outputBusy={outputBusy} />}
         {view === "settlements" && <SettlementView project={project} summaries={settlements} updateProject={updateProject} />}
         {view === "settings" && (
           <SettingsView project={project} projectFilePath={projectFilePath} updateProject={updateProject} />
@@ -581,7 +581,7 @@ function AccountingView({ project, incomes, totals, issues, updateProject, onAdd
   </section>;
 }
 
-function ReceiptBookView({ project, updateProject, exportFormat, onExportFormatChange, onExport, outputBusy }: { project: ProjectData; updateProject: (updater: (project: ProjectData) => ProjectData) => void; exportFormat: ReceiptExportFormat; onExportFormatChange: (format: ReceiptExportFormat) => void; onExport: () => void; outputBusy: "excel" | ReceiptExportFormat | null }) {
+function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, onExportFormatChange, onExport, outputBusy }: { project: ProjectData; updateProject: (updater: (project: ProjectData) => ProjectData) => void; onEditExpense: (expense: Expense) => void; exportFormat: ReceiptExportFormat; onExportFormatChange: (format: ReceiptExportFormat) => void; onExport: () => void; outputBusy: "excel" | ReceiptExportFormat | null }) {
   const [selectedAttachmentId, setSelectedAttachmentId] = useState<string | null>(null);
   const [selectedOfflineHolderId, setSelectedOfflineHolderId] = useState<string | null>(null);
   const [croppingAttachmentId, setCroppingAttachmentId] = useState<string | null>(null);
@@ -853,6 +853,7 @@ function ReceiptBookView({ project, updateProject, exportFormat, onExportFormatC
     <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림·홀더 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>세로 우선 자동 배치</strong><span>위→아래로 채운 뒤 다음 열로 이동 · 크기 변경 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 내보낸 파일에 넣지 않고 인쇄 후 직접 기입</div></div>
     {selectedItem && <div className="receipt-floating-toolbar-anchor no-print"><div className={`panel receipt-editor-controls active ${selectedItem.offlineHolder ? "holder-controls" : ""}`}>
       <div className="editor-selection">{selectedItem.offlineHolder ? <ReceiptText size={22} /> : <FileImage size={22} />}<div><strong>{selectedItem.attachment?.originalName ?? "오프라인 실물 부착 공간"}</strong><span>{getCategory(selectedItem.expense.category).label} · {selectedItem.expense.content}</span></div></div>
+      {!selectedItem.evidenceId && <button className="button secondary expense-detail-button" onClick={() => onEditExpense(selectedItem.expense)}><FileSpreadsheet size={16} /> 지출 명세 보기</button>}
       {selectedItem.offlineHolder ? <>
         <button className="button secondary" onClick={addOfflineHolder}><Plus size={16} /> {selectedItem.evidenceId ? "같은 증빙 부착칸 추가" : "같은 영수증 조각 추가"}</button>
         <button className="button ghost" disabled={!selectedItem.evidenceId && selectedOfflineHolders.length <= 1} onClick={removeOfflineHolder}><Trash2 size={16} /> 홀더 삭제</button>
@@ -920,7 +921,7 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
     ? project.categoryEvidence.find((evidence) => evidence.id === evidenceId)?.offlineHolders ?? []
     : offlineHoldersForExpense(expense);
   const holderIndex = offlineHolder ? offlineHolders.findIndex((holder) => holder.id === offlineHolder.id) : -1;
-  const watermarkLabel = receiptWatermarkLabel(item);
+  const watermarkLabel = receiptWatermarkDisplayLabel(item);
   const amountLabel = receiptAmountLabel(item);
   const watermarkLabelSize = watermarkFontSizePx(watermarkLabel, placement.widthMm, placement.heightMm);
   const watermarkStyle = {

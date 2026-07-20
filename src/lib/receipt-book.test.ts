@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, exportedOfflinePlaceholderLabel, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, exportedOfflinePlaceholderLabel, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkDisplayLabel, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -94,6 +94,10 @@ describe("영수증철 페이지 구성", () => {
 
     expect(buildReceiptBookItems(project).map(receiptWatermarkLabel)).toEqual([
       "식대간식비-1-1",
+      "식대간식비-1-2",
+    ]);
+    expect(buildReceiptBookItems(project).map(receiptWatermarkDisplayLabel)).toEqual([
+      "식대간식비-1-1 · 10,000원",
       "식대간식비-1-2",
     ]);
   });
@@ -233,7 +237,7 @@ describe("영수증철 페이지 구성", () => {
       "식대간식비-1-1",
       "식대간식비-1-2",
     ]);
-    expect(items.map(receiptAmountLabel)).toEqual(["10,000원", "10,000원"]);
+    expect(items.map(receiptAmountLabel)).toEqual(["10,000원", undefined]);
   });
 
   it("항목이 바뀌면 남은 공간과 관계없이 새 페이지에서 시작한다", () => {

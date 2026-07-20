@@ -133,7 +133,15 @@ export function exportedOfflinePlaceholderLabel(item: ReceiptBookItem) {
 }
 
 export function receiptAmountLabel(item: ReceiptBookItem) {
-  return item.evidenceId ? undefined : `${item.expense.amount.toLocaleString("ko-KR")}원`;
+  return item.evidenceId || item.receiptSequence !== 1
+    ? undefined
+    : `${item.expense.amount.toLocaleString("ko-KR")}원`;
+}
+
+export function receiptWatermarkDisplayLabel(item: ReceiptBookItem) {
+  const amountLabel = receiptAmountLabel(item);
+  const watermarkLabel = receiptWatermarkLabel(item);
+  return amountLabel ? `${watermarkLabel} · ${amountLabel}` : watermarkLabel;
 }
 
 export function offlinePlaceholderLabel(item: ReceiptBookItem) {
