@@ -10,6 +10,17 @@ import { createEmptyProject, type Expense } from "../types";
 
 const templatePath = path.resolve(process.cwd(), "resources/accounting-template.xlsx");
 
+const sharedStringValues = (document: Document) =>
+  [...document.querySelectorAll("si")].map((item) =>
+    [...item.querySelectorAll("t")].map((text) => text.textContent ?? "").join(""),
+  );
+
+const sharedStringCellText = (worksheet: Document, values: string[], reference: string) => {
+  const cell = worksheet.querySelector(`c[r="${reference}"]`);
+  const index = Number(cell?.querySelector("v")?.textContent);
+  return values[index];
+};
+
 const makeExpense = (index: number): Expense => ({
   id: `expense-${index}`,
   createdOrder: index,
@@ -47,6 +58,7 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     project.expenses = Array.from({ length: 8 }, (_, index) => makeExpense(index + 1));
     project.expenses[0].category = "teamMinistry";
     project.expenses[0].amount = 305_850;
+    project.expenses[6].itemDetails = "택시 1회";
     project.incomes = [
       { id: "income", type: "dues", amount: 280_000, receivedAt: "2026-07-01", memo: "" },
       { id: "support", type: "teamSupport", amount: 300_000, receivedAt: "2026-07-01", memo: "" },
@@ -59,20 +71,57 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     const originalZip = await JSZip.loadAsync(originalBytes);
     const outputZip = await JSZip.loadAsync(outputBytes);
 
-    for (const path of ["xl/worksheets/sheet4.xml", "xl/worksheets/sheet5.xml", "xl/worksheets/sheet6.xml", "xl/styles.xml", "xl/sharedStrings.xml"]) {
+    for (const path of ["xl/worksheets/sheet4.xml", "xl/worksheets/sheet5.xml", "xl/worksheets/sheet6.xml", "xl/styles.xml"]) {
       expect(await outputZip.file(path)?.async("uint8array")).toEqual(await originalZip.file(path)?.async("uint8array"));
     }
 
     const ledger = await outputZip.file("xl/worksheets/sheet3.xml")!.async("string");
-    expect(ledger).toContain("[교통비] 교통비 7");
-    expect(ledger).toContain("팀별사역지원금 300.000원\n팀회비\n5.850원 사용");
     expect(ledger).toContain('mergeCell ref="F36:F38"');
     expect(ledger).toContain("SUM(D5:D11)");
-    expect(ledger).not.toContain("비공개 결제자");
-    expect(ledger).not.toContain("비공개 계좌");
+    expect(ledger).not.toContain('t="inlineStr"');
+
+    const sharedStrings = new DOMParser().parseFromString(
+      await outputZip.file("xl/sharedStrings.xml")!.async("string"),
+      "application/xml",
+    );
+    const sharedValues = sharedStringValues(sharedStrings);
+    const ledgerDocument = new DOMParser().parseFromString(ledger, "application/xml");
+    expect(sharedValues).toContain("[교통비] 교통비 7_택시 1회");
+    expect(sharedValues).toContain("팀별사역지원금 300.000원\n팀회비\n5.850원 사용");
+    expect(sharedStringCellText(ledgerDocument, sharedValues, "C10")).toBe("[교통비] 교통비 7_택시 1회");
+    expect(sharedValues).not.toContain("비공개 결제자");
+    expect(sharedValues).not.toContain("비공개 계좌");
+
+    let sharedReferenceCount = 0;
+    for (const worksheetFile of outputZip.file(/xl\/worksheets\/sheet\d+\.xml/)) {
+      const worksheet = new DOMParser().parseFromString(
+        await worksheetFile.async("string"),
+        "application/xml",
+      );
+      for (const cell of worksheet.querySelectorAll('c[t="s"]')) {
+        sharedReferenceCount += 1;
+        const index = Number(cell.querySelector("v")?.textContent);
+        expect(Number.isInteger(index)).toBe(true);
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(index).toBeLessThan(sharedValues.length);
+      }
+      expect(worksheet.querySelector('c[t="inlineStr"]')).toBeNull();
+    }
+    expect(Number(sharedStrings.documentElement.getAttribute("uniqueCount"))).toBe(sharedValues.length);
+    expect(Number(sharedStrings.documentElement.getAttribute("count"))).toBe(sharedReferenceCount);
 
     const report = new DOMParser().parseFromString(await outputZip.file("xl/worksheets/sheet2.xml")!.async("string"), "application/xml");
     expect(report.querySelector('c[r="E25"] v')?.textContent).toBe("0");
+
+    const summary = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet1.xml")!.async("string"),
+      "application/xml",
+    );
+    expect(summary.querySelector('c[r="G6"] f')?.getAttribute("t")).toBe("shared");
+    expect(summary.querySelector('c[r="G6"] f')?.getAttribute("ref")).toBe("G6:G25");
+    expect(summary.querySelector('c[r="G7"] f')?.getAttribute("si")).toBe("0");
+    expect(summary.querySelector('c[r="D26"] f')?.getAttribute("ref")).toBe("D26:P26");
+    expect(summary.querySelector('c[r="E26"] f')?.getAttribute("si")).toBe("3");
 
     const workbook = await outputZip.file("xl/workbook.xml")!.async("string");
     expect(workbook).toContain("'국내-금전출납부'!$A$1:$F$52");

@@ -4,7 +4,12 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 import type { Attachment, ProjectData } from "../types";
 import { attachmentAbsolutePath, readAttachmentBytes } from "./desktop";
-import { buildReceiptBookItems, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems } from "./receipt-book";
+import {
+  buildReceiptBookItems,
+  DEFAULT_IMAGE_LAYOUT,
+  layoutReceiptBookItems,
+  offlinePlaceholderLabel,
+} from "./receipt-book";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -108,14 +113,29 @@ function drawPlacedImage(
   context.restore();
 }
 
-function drawOfflinePlaceholder(context: CanvasRenderingContext2D, bounds: { x: number; y: number; width: number; height: number }) {
+function drawOfflinePlaceholder(
+  context: CanvasRenderingContext2D,
+  bounds: { x: number; y: number; width: number; height: number },
+  label: string,
+) {
   const width = mm(32);
   const height = mm(17);
+  const x = bounds.x + (bounds.width - width) / 2;
+  const y = bounds.y + (bounds.height - height) / 2;
   context.save();
   context.strokeStyle = "#9ca3af";
   context.lineWidth = Math.max(1, mm(0.2));
   context.setLineDash([mm(1.2), mm(1.2)]);
-  context.strokeRect(bounds.x + (bounds.width - width) / 2, bounds.y + (bounds.height - height) / 2, width, height);
+  context.strokeRect(x, y, width, height);
+  context.setLineDash([]);
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = "#4b5563";
+  context.font = `700 ${Math.round(mm(2.2))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
+  context.fillText(label, x + width / 2, y + mm(6.2), width - mm(2));
+  context.fillStyle = "#7c8592";
+  context.font = `500 ${Math.round(mm(1.55))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
+  context.fillText("실물을 중앙에 붙이세요", x + width / 2, y + mm(11), width - mm(2));
   context.restore();
 }
 
@@ -147,7 +167,7 @@ export async function createReceiptBookPdf(project: ProjectData) {
         height: mm(placement.heightMm),
       };
       if (item.offlineHolder) {
-        drawOfflinePlaceholder(context, bounds);
+        drawOfflinePlaceholder(context, bounds, offlinePlaceholderLabel(item));
       } else if (item.attachment) {
         const rendered = renderedAttachments.get(item.attachment.id);
         if (rendered) drawPlacedImage(context, rendered, bounds, item.attachment);

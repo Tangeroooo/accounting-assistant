@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, layoutReceiptBookItems, resizePictureFrame } from "./receipt-book";
+import { buildReceiptBookItems, layoutReceiptBookItems, offlinePlaceholderLabel, resizePictureFrame } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -101,6 +101,29 @@ describe("영수증철 페이지 구성", () => {
     expect(layoutReceiptBookItems(items)[0]).toMatchObject([
       { widthMm: 50, heightMm: 90 },
       { widthMm: 120, heightMm: 45 },
+    ]);
+    expect(items.map(offlinePlaceholderLabel)).toEqual([
+      "영수증 3-1 · 1/2",
+      "영수증 3-1 · 2/2",
+    ]);
+  });
+
+  it("항목이 바뀌면 남은 공간과 관계없이 새 페이지에서 시작한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [
+      { ...expense(1), category: "transport", receiptNumber: 1 },
+      { ...expense(2), category: "transport", receiptNumber: 2 },
+      { ...expense(3), category: "lodging", receiptNumber: 1 },
+      { ...expense(4), category: "lodging", receiptNumber: 2 },
+      { ...expense(5), category: "meals", receiptNumber: 1 },
+    ];
+
+    const pages = layoutReceiptBookItems(buildReceiptBookItems(project));
+    expect(pages).toHaveLength(3);
+    expect(pages.map((page) => [...new Set(page.map(({ item }) => item.expense.category))])).toEqual([
+      ["transport"],
+      ["lodging"],
+      ["meals"],
     ]);
   });
 

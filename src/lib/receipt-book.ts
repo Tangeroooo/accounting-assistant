@@ -1,4 +1,4 @@
-import type { Attachment, Expense, OfflineReceiptHolder, ProjectData } from "../types";
+import { getCategory, type Attachment, type Expense, type OfflineReceiptHolder, type ProjectData } from "../types";
 
 export const RECEIPT_FLOW_WIDTH_MM = 190;
 export const RECEIPT_FLOW_HEIGHT_MM = 262;
@@ -103,7 +103,38 @@ export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
       supporting: false,
     })),
   ];
-  return [...expenseItems, ...evidenceItems];
+  const lastTransportItemIndex = expenseItems.reduce(
+    (lastIndex, item, index) => item.expense.category === "transport" ? index : lastIndex,
+    -1,
+  );
+  return [
+    ...expenseItems.slice(0, lastTransportItemIndex + 1),
+    ...evidenceItems,
+    ...expenseItems.slice(lastTransportItemIndex + 1),
+  ];
+}
+
+export function offlinePlaceholderLabel(item: ReceiptBookItem) {
+  if (item.evidenceId) {
+    const holders = item.expense.offlineHolders ?? [];
+    const index = item.offlineHolder
+      ? holders.findIndex((holder) => holder.id === item.offlineHolder?.id)
+      : -1;
+    return holders.length > 1 && index >= 0
+      ? `주유비 산정 증빙 · ${index + 1}/${holders.length}`
+      : "주유비 산정 증빙";
+  }
+
+  const category = getCategory(item.expense.category);
+  const receiptNumber = item.expense.receiptNumber ?? "?";
+  const holders = offlineHoldersForExpense(item.expense);
+  const index = item.offlineHolder
+    ? holders.findIndex((holder) => holder.id === item.offlineHolder?.id)
+    : -1;
+  const receiptCode = `영수증 ${category.number}-${receiptNumber}`;
+  return holders.length > 1 && index >= 0
+    ? `${receiptCode} · ${index + 1}/${holders.length}`
+    : receiptCode;
 }
 
 function clamp(value: number, minimum: number, maximum: number) {
@@ -179,6 +210,7 @@ export function layoutReceiptBookItems(
   let column: Array<{ item: ReceiptBookItem; widthMm: number; heightMm: number }> = [];
   let columnHeightMm = 0;
   let columnWidthMm = 0;
+  let currentCategory = items[0]?.expense.category;
 
   const flushColumn = () => {
     if (column.length === 0) return;
@@ -199,6 +231,13 @@ export function layoutReceiptBookItems(
   };
 
   for (const item of items) {
+    if (currentCategory && item.expense.category !== currentCategory) {
+      flushColumn();
+      if (page.length > 0) pages.push(page);
+      page = [];
+      xMm = 0;
+      currentCategory = item.expense.category;
+    }
     const dimensions = dimensionsForItem(item, measuredAspectRatios);
     const nextHeight = columnHeightMm
       + (column.length > 0 ? RECEIPT_FLOW_GAP_MM : 0)

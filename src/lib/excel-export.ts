@@ -73,6 +73,45 @@ const setText = (document: XmlDocument, cell: Element, value: string) => {
   cell.appendChild(inline);
 };
 
+/**
+ * Excel for macOS repairs inline strings added to this Microsoft-authored
+ * template. Move every generated text value into the workbook's existing
+ * shared-string table before the package is written.
+ */
+const moveInlineStringsToSharedStrings = (
+  sharedStringsDocument: XmlDocument,
+  worksheetDocuments: XmlDocument[],
+) => {
+  const sharedStrings = sharedStringsDocument.documentElement;
+  let nextIndex = all<Element>(sharedStrings, ":scope > si").length;
+
+  for (const worksheet of worksheetDocuments) {
+    for (const cell of all<Element>(worksheet, 'c[t="inlineStr"]')) {
+      const value = all<Element>(cell, "is t")
+        .map((node) => node.textContent ?? "")
+        .join("");
+      const item = sharedStringsDocument.createElementNS(NS, "si");
+      const text = sharedStringsDocument.createElementNS(NS, "t");
+      if (/^\s|\s$/.test(value)) text.setAttribute("xml:space", "preserve");
+      text.textContent = value;
+      item.appendChild(text);
+      sharedStrings.appendChild(item);
+
+      while (cell.firstChild) cell.removeChild(cell.firstChild);
+      cell.setAttribute("t", "s");
+      const reference = worksheet.createElementNS(NS, "v");
+      reference.textContent = String(nextIndex);
+      cell.appendChild(reference);
+      nextIndex += 1;
+    }
+  }
+
+  sharedStrings.setAttribute("uniqueCount", String(nextIndex));
+};
+
+const countSharedStringReferences = (document: XmlDocument) =>
+  all<Element>(document, 'c[t="s"]').length;
+
 const setNumber = (document: XmlDocument, cell: Element, value: number) => {
   while (cell.firstChild) cell.removeChild(cell.firstChild);
   cell.removeAttribute("t");
@@ -82,10 +121,14 @@ const setNumber = (document: XmlDocument, cell: Element, value: number) => {
 };
 
 const setFormula = (document: XmlDocument, cell: Element, formula: string, cached = 0) => {
+  const existingFormula = cell.querySelector(":scope > f") as Element | null;
+  const sharedFormula = existingFormula?.getAttribute("t") === "shared"
+    ? (existingFormula.cloneNode(true) as Element)
+    : null;
   while (cell.firstChild) cell.removeChild(cell.firstChild);
   cell.removeAttribute("t");
-  const formulaNode = document.createElementNS(NS, "f");
-  formulaNode.textContent = formula;
+  const formulaNode = sharedFormula ?? document.createElementNS(NS, "f");
+  if (!sharedFormula || formulaNode.textContent?.trim()) formulaNode.textContent = formula;
   const valueNode = document.createElementNS(NS, "v");
   valueNode.textContent = String(cached);
   cell.append(formulaNode, valueNode);
@@ -446,21 +489,43 @@ export async function createAccountingWorkbook(projectInput: ProjectData) {
   const zip = await JSZip.loadAsync(await response.arrayBuffer());
   const sheetFile = zip.file("xl/worksheets/sheet3.xml");
   const workbookFile = zip.file("xl/workbook.xml");
-  if (!sheetFile || !workbookFile) throw new Error("공식 템플릿 구조가 예상과 다릅니다.");
+  const sharedStringsFile = zip.file("xl/sharedStrings.xml");
+  if (!sheetFile || !workbookFile || !sharedStringsFile) {
+    throw new Error("공식 템플릿 구조가 예상과 다릅니다.");
+  }
 
   const ledgerDocument = parseXml(await sheetFile.async("string"));
   const { maxRow } = replaceLedger(ledgerDocument, project);
-  zip.file("xl/worksheets/sheet3.xml", serializeXml(ledgerDocument));
 
   const reportFile = zip.file("xl/worksheets/sheet2.xml");
   const summaryFile = zip.file("xl/worksheets/sheet1.xml");
   if (!reportFile || !summaryFile) throw new Error("공식 회계보고서 시트를 찾지 못했습니다.");
   const reportDocument = parseXml(await reportFile.async("string"));
   updateAccountingReport(reportDocument, project);
-  zip.file("xl/worksheets/sheet2.xml", serializeXml(reportDocument));
   const summaryDocument = parseXml(await summaryFile.async("string"));
   updateCommunitySummary(summaryDocument, project);
+
+  const sharedStringsDocument = parseXml(await sharedStringsFile.async("string"));
+  const changedWorksheets = [summaryDocument, reportDocument, ledgerDocument];
+  moveInlineStringsToSharedStrings(sharedStringsDocument, changedWorksheets);
+
+  let sharedStringReferenceCount = changedWorksheets.reduce(
+    (sum, document) => sum + countSharedStringReferences(document),
+    0,
+  );
+  for (const sheetNumber of [4, 5, 6]) {
+    const unchangedSheet = zip.file(`xl/worksheets/sheet${sheetNumber}.xml`);
+    if (!unchangedSheet) continue;
+    sharedStringReferenceCount += countSharedStringReferences(
+      parseXml(await unchangedSheet.async("string")),
+    );
+  }
+  sharedStringsDocument.documentElement.setAttribute("count", String(sharedStringReferenceCount));
+
   zip.file("xl/worksheets/sheet1.xml", serializeXml(summaryDocument));
+  zip.file("xl/worksheets/sheet2.xml", serializeXml(reportDocument));
+  zip.file("xl/worksheets/sheet3.xml", serializeXml(ledgerDocument));
+  zip.file("xl/sharedStrings.xml", serializeXml(sharedStringsDocument));
 
   const workbookDocument = parseXml(await workbookFile.async("string"));
   updatePrintArea(workbookDocument, maxRow);
