@@ -1,7 +1,7 @@
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-import type { Attachment } from "../types";
+import type { Attachment, ProjectData } from "../types";
 import {
   attachmentAbsolutePath,
   deleteAttachmentFile,
@@ -32,12 +32,13 @@ export async function normalizeAttachmentToImages(
   projectDirectory: string,
   attachment: Attachment,
 ): Promise<Attachment[]> {
-  if (attachment.mimeType !== "application/pdf") return [attachment];
+  if (attachment.mimeType !== "application/pdf" && !attachment.originalName.toLowerCase().endsWith(".pdf")) return [attachment];
 
   const sourcePath = attachmentAbsolutePath(projectDirectory, attachment.relativePath);
   const generatedPaths: string[] = [];
   try {
-    const document = await getDocument({ data: await readAttachmentBytes(sourcePath) }).promise;
+    const loadingTask = getDocument({ data: await readAttachmentBytes(sourcePath) });
+    const document = await loadingTask.promise;
     const images: Attachment[] = [];
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
@@ -68,10 +69,64 @@ export async function normalizeAttachmentToImages(
         },
       });
     }
+    await loadingTask.destroy();
     await deleteAttachmentFile(sourcePath);
     return images;
   } catch (error) {
     await Promise.all(generatedPaths.map((path) => deleteAttachmentFile(attachmentAbsolutePath(projectDirectory, path))));
     throw error;
   }
+}
+
+export interface ProjectPdfMigrationResult {
+  project: ProjectData;
+  convertedPdfCount: number;
+  generatedImageCount: number;
+  failures: string[];
+}
+
+export async function normalizeProjectAttachmentsToImages(project: ProjectData): Promise<ProjectPdfMigrationResult> {
+  if (!project.projectDirectory) {
+    return { project, convertedPdfCount: 0, generatedImageCount: 0, failures: [] };
+  }
+
+  let convertedPdfCount = 0;
+  let generatedImageCount = 0;
+  const failures: string[] = [];
+  const normalizeList = async (attachments: Attachment[]) => {
+    const normalized: Attachment[] = [];
+    for (const attachment of attachments) {
+      const isPdf = attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf");
+      if (!isPdf) {
+        normalized.push(attachment);
+        continue;
+      }
+      try {
+        const images = await normalizeAttachmentToImages(project.projectDirectory!, attachment);
+        normalized.push(...images);
+        convertedPdfCount += 1;
+        generatedImageCount += images.length;
+      } catch (error) {
+        normalized.push(attachment);
+        failures.push(`${attachment.originalName}: ${error instanceof Error ? error.message : "PDF 변환 실패"}`);
+      }
+    }
+    return normalized;
+  };
+
+  const expenses = [] as ProjectData["expenses"];
+  for (const expense of project.expenses) {
+    expenses.push({ ...expense, attachments: await normalizeList(expense.attachments) });
+  }
+  const categoryEvidence = [] as ProjectData["categoryEvidence"];
+  for (const evidence of project.categoryEvidence) {
+    categoryEvidence.push({ ...evidence, attachments: await normalizeList(evidence.attachments) });
+  }
+
+  return {
+    project: { ...project, expenses, categoryEvidence },
+    convertedPdfCount,
+    generatedImageCount,
+    failures,
+  };
 }

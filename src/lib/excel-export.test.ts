@@ -112,6 +112,8 @@ describe("공식 템플릿 비파괴 내보내기", () => {
 
     const report = new DOMParser().parseFromString(await outputZip.file("xl/worksheets/sheet2.xml")!.async("string"), "application/xml");
     expect(report.querySelector('c[r="E25"] v')?.textContent).toBe("0");
+    expect(report.querySelector('c[r="B6"]')?.children).toHaveLength(0);
+    expect(sharedStringCellText(report, sharedValues, "C6")).toBe("그룹명 : ");
 
     const summary = new DOMParser().parseFromString(
       await outputZip.file("xl/worksheets/sheet1.xml")!.async("string"),

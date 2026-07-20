@@ -163,6 +163,13 @@ const updateTextCell = (document: XmlDocument, reference: string, value: string)
   setText(document, cell, value);
 };
 
+const clearCellContent = (document: XmlDocument, reference: string) => {
+  const cell = document.querySelector(`c[r="${reference}"]`) as Element | null;
+  if (!cell) throw new Error(`공식 템플릿 셀 ${reference}을 찾지 못했습니다.`);
+  while (cell.firstChild) cell.removeChild(cell.firstChild);
+  cell.removeAttribute("t");
+};
+
 const updateNumberCell = (document: XmlDocument, reference: string, value: number) => {
   const cell = document.querySelector(`c[r="${reference}"]`) as Element | null;
   if (!cell) throw new Error(`공식 템플릿 셀 ${reference}을 찾지 못했습니다.`);
@@ -201,7 +208,8 @@ function updateAccountingReport(document: XmlDocument, project: ProjectData) {
   updateTextCell(document, "D4", `이름 : ${project.meta.accountantName}`);
   updateTextCell(document, "E4", `이름 : ${project.meta.pastorName}`);
   updateTextCell(document, "A6", ` ▶ 공동체 : ${project.meta.community}`);
-  updateTextCell(document, "B6", `그룹명 : ${project.meta.groupName}`);
+  clearCellContent(document, "B6");
+  updateTextCell(document, "C6", `그룹명 : ${project.meta.groupName}`);
   updateTextCell(document, "A7", ` ▶ 사역지(지역/교회명or지역/단체명) : ${project.meta.destination}`);
   updateTextCell(
     document,
