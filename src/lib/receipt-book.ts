@@ -108,14 +108,13 @@ export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
       supporting: false,
     })),
   ].map((item, index) => ({ ...item, receiptSequence: index + 1 }));
-  const lastTransportItemIndex = expenseItems.reduce(
-    (lastIndex, item, index) => item.expense.category === "transport" ? index : lastIndex,
-    -1,
+  const firstTransportItemIndex = expenseItems.findIndex(
+    (item) => item.expense.category === "transport",
   );
   return [
-    ...expenseItems.slice(0, lastTransportItemIndex + 1),
+    ...expenseItems.slice(0, firstTransportItemIndex),
     ...evidenceItems,
-    ...expenseItems.slice(lastTransportItemIndex + 1),
+    ...expenseItems.slice(firstTransportItemIndex),
   ];
 }
 

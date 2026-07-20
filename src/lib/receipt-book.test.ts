@@ -266,17 +266,21 @@ describe("영수증철 페이지 구성", () => {
       offlineHolders: [{ id: "fuel-offline", widthMm: 90, heightMm: 70 }],
     }];
     const items = buildReceiptBookItems(project);
-    expect(items.slice(-2).map((item) => ({ evidenceId: item.evidenceId, attachment: item.attachment?.id, holder: item.offlineHolder?.id }))).toEqual([
+    expect(items.slice(0, 2).map((item) => ({ evidenceId: item.evidenceId, attachment: item.attachment?.id, holder: item.offlineHolder?.id }))).toEqual([
       { evidenceId: "fuel-evidence", attachment: "fuel-image", holder: undefined },
       { evidenceId: "fuel-evidence", attachment: undefined, holder: "fuel-offline" },
     ]);
-    expect(items.slice(-2).map(receiptWatermarkLabel)).toEqual([
+    expect(items.slice(0, 2).map(receiptWatermarkLabel)).toEqual([
       "교통비-공통증빙-1",
       "교통비-공통증빙-2",
     ]);
-    expect(items.slice(-1).map(exportedOfflinePlaceholderLabel)).toEqual([
+    expect(items.slice(1, 2).map(exportedOfflinePlaceholderLabel)).toEqual([
       "교통비-공통증빙-2",
     ]);
-    expect(layoutReceiptBookItems(items).flat().at(-1)).toMatchObject({ widthMm: 90, heightMm: 70 });
+    expect(layoutReceiptBookItems(items)[0][0]).toMatchObject({
+      widthMm: expect.any(Number),
+      item: { evidenceId: "fuel-evidence", attachment: { id: "fuel-image" } },
+    });
+    expect(layoutReceiptBookItems(items)[0][1]).toMatchObject({ widthMm: 90, heightMm: 70 });
   });
 });

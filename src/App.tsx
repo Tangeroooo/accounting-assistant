@@ -89,6 +89,12 @@ const navItems: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = 
 
 const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 
+function clipboardImageFile(event: ClipboardEvent) {
+  return Array.from(event.clipboardData?.items ?? [])
+    .find((item) => item.kind === "file" && item.type.startsWith("image/"))
+    ?.getAsFile() ?? undefined;
+}
+
 const sampleProject = (): ProjectData => {
   const now = new Date().toISOString();
   return applyDerivedState({
@@ -580,6 +586,8 @@ function ReceiptBookView({ project, updateProject, exportFormat, onExportFormatC
   const [selectedOfflineHolderId, setSelectedOfflineHolderId] = useState<string | null>(null);
   const [croppingAttachmentId, setCroppingAttachmentId] = useState<string | null>(null);
   const [previewFormat, setPreviewFormat] = useState<ReceiptExportFormat | null>(null);
+  const [fuelPasteArmed, setFuelPasteArmed] = useState(false);
+  const [fuelPasteStatus, setFuelPasteStatus] = useState("");
   const dragRef = useRef<{ attachmentId: string; x: number; y: number } | null>(null);
   const resizeRef = useRef<{
     target: "attachment" | "offline-holder";
@@ -790,17 +798,47 @@ function ReceiptBookView({ project, updateProject, exportFormat, onExportFormatC
     }));
     setSelectedOfflineHolderId(remaining[0]?.id ?? null);
   };
-  const addFuelEvidence = async () => {
-    if (!project.projectDirectory) return;
-    const imported = await importAttachments(project.projectDirectory);
-    if (imported.length === 0) return;
-    const attachments = (await Promise.all(imported.map((attachment) => normalizeAttachmentToImages(project.projectDirectory!, attachment)))).flat();
+  const appendFuelEvidenceAttachments = (attachments: Attachment[]) => {
     updateProject((current) => {
       const existing = current.categoryEvidence.find((item) => item.category === "transport" && item.kind === "fuel-calculation");
       const evidenceAttachments = attachments.map((item) => ({ ...item, kind: "other" as const }));
       return { ...current, categoryEvidence: existing ? current.categoryEvidence.map((item) => item.id === existing.id ? { ...item, attachments: [...item.attachments, ...evidenceAttachments] } : item) : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport", kind: "fuel-calculation", title: "교통비 공통 주유비 산정 증빙", attachments: evidenceAttachments, offlineHolders: [] }] };
     });
   };
+  const addFuelEvidence = async () => {
+    if (!project.projectDirectory) return;
+    const imported = await importAttachments(project.projectDirectory);
+    if (imported.length === 0) return;
+    const attachments = (await Promise.all(imported.map((attachment) => normalizeAttachmentToImages(project.projectDirectory!, attachment)))).flat();
+    appendFuelEvidenceAttachments(attachments);
+  };
+  useEffect(() => {
+    if (!fuelPasteArmed) return;
+    const handleFuelPaste = async (event: ClipboardEvent) => {
+      const file = clipboardImageFile(event);
+      if (!file) {
+        setFuelPasteStatus("클립보드에 이미지가 없습니다. 이미지를 복사한 뒤 다시 붙여넣어 주세요.");
+        return;
+      }
+      event.preventDefault();
+      if (!project.projectDirectory) {
+        setFuelPasteArmed(false);
+        setFuelPasteStatus("먼저 .barun 프로젝트를 저장해 주세요.");
+        return;
+      }
+      try {
+        const attachment = await importClipboardAttachment(project.projectDirectory, file);
+        appendFuelEvidenceAttachments([attachment]);
+        setFuelPasteArmed(false);
+        setFuelPasteStatus("공통 주유비 산정 증빙에 이미지를 붙여넣었습니다.");
+      } catch (error) {
+        setFuelPasteArmed(false);
+        setFuelPasteStatus(error instanceof Error ? error.message : "클립보드 이미지를 붙여넣지 못했습니다.");
+      }
+    };
+    window.addEventListener("paste", handleFuelPaste);
+    return () => window.removeEventListener("paste", handleFuelPaste);
+  }, [fuelPasteArmed, project.projectDirectory]);
   const addFuelOfflineHolder = () => {
     const holder: OfflineReceiptHolder = { id: crypto.randomUUID(), widthMm: 82, heightMm: 62 };
     updateProject((current) => {
@@ -824,13 +862,13 @@ function ReceiptBookView({ project, updateProject, exportFormat, onExportFormatC
         <button className="button ghost" onClick={() => { setCroppingAttachmentId(null); if (selectedAttachmentId) updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...DEFAULT_IMAGE_LAYOUT, aspectRatio: layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio })); }}><RotateCcw size={16} /> 원본 비율 복원</button>
       </>}
     </div></div>}
+    {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && !((transportFuelEvidence?.attachments.length ?? 0) > 0 || (transportFuelEvidence?.offlineHolders?.length ?? 0) > 0)
+      && <div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} /><div className={`attachment-placeholder no-print ${fuelPasteArmed ? "paste-waiting" : ""}`}><Fuel size={35} /><strong>주유비 산정 증빙을 추가하세요</strong><span>교통비 영수증보다 먼저 배치되는 공통 자료입니다. 온라인 파일이나 인쇄 후 붙일 오프라인 칸을 여러 개 추가할 수 있습니다.</span><div className="attachment-placeholder-actions"><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={17} /> 온라인 파일 선택</button><button className={`button secondary clipboard-arm-button ${fuelPasteArmed ? "active" : ""}`} aria-pressed={fuelPasteArmed} onClick={() => { const next = !fuelPasteArmed; setFuelPasteArmed(next); setFuelPasteStatus(next ? "이제 ⌘V / Ctrl+V를 눌러 이미지를 붙여넣으세요." : "붙여넣기 대기를 취소했습니다."); }} disabled={!project.projectDirectory}><ClipboardPaste size={17} /> {fuelPasteArmed ? "붙여넣기 대기 중" : "클립보드 붙여넣기"}</button><button className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={17} /> 오프라인 부착칸</button></div>{fuelPasteStatus && <small className={fuelPasteArmed ? "paste-status active" : "paste-status"}>{fuelPasteStatus}</small>}{!project.projectDirectory && <small>온라인 파일은 프로젝트를 먼저 저장해야 첨부할 수 있습니다.</small>}</div></div>}
     {receiptPages.map((placements, pageIndex) => <article className="receipt-sheet receipt-flow-sheet" key={`receipt-page-${pageIndex}`}>
       <ReceiptHeader project={project} />
       <div className="receipt-flow-canvas">{placements.map((placement) => <ReceiptTile key={placement.item.id} project={project} placement={placement} selected={placement.item.attachment?.id === selectedAttachmentId || placement.item.offlineHolder?.id === selectedOfflineHolderId} cropMode={placement.item.attachment?.id === croppingAttachmentId} onSelectAttachment={selectAttachment} onSelectOfflineHolder={selectOfflineHolder} onAspectRatio={registerAspectRatio} onPointerDown={startDrag} onPointerMove={moveDrag} onResizeStart={startResize} onResizeMove={moveResize} onPointerUp={finishPointerEdit} />)}</div>
       <div className="receipt-page-count no-print">{pageIndex + 1} / {receiptPages.length}</div>
     </article>)}
-    {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && !((transportFuelEvidence?.attachments.length ?? 0) > 0 || (transportFuelEvidence?.offlineHolders?.length ?? 0) > 0)
-      && <div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} /><div className="attachment-placeholder no-print"><Fuel size={35} /><strong>주유비 산정 증빙을 추가하세요</strong><span>주유 영수증과 1:1로 대응하지 않는 공통 자료입니다. 온라인 파일이나 인쇄 후 붙일 오프라인 칸을 여러 개 추가할 수 있습니다.</span><div className="attachment-placeholder-actions"><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={17} /> 온라인 파일 선택</button><button className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={17} /> 오프라인 부착칸</button></div>{!project.projectDirectory && <small>온라인 파일은 프로젝트를 먼저 저장해야 첨부할 수 있습니다.</small>}</div></div>}
     {project.expenses.length === 0 && <div className="panel empty-state"><ReceiptText size={40} /><strong>영수증철에 배치할 내역이 없습니다</strong><span>지출을 등록하면 순서대로 출력 페이지가 만들어집니다.</span></div>}
     {previewFormat && <ReceiptBookPreviewModal project={project} format={previewFormat} onClose={() => setPreviewFormat(null)} />}
   </section>;
@@ -990,6 +1028,7 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
   const [payerName, setPayerName] = useState(project.people.find((person) => person.id === expense.payerId)?.name ?? "");
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [inlineAttachmentId, setInlineAttachmentId] = useState<string | null>(expense.attachments[0]?.id ?? null);
+  const [clipboardTarget, setClipboardTarget] = useState<"receipt" | "fuel" | null>(null);
   const update = <K extends keyof Expense>(key: K, value: Expense[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const addAttachments = (attachments: Attachment[]) => {
     setDraft((current) => ({
@@ -1019,24 +1058,6 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       onToast(error instanceof Error ? error.message : "첨부파일을 가져오지 못했습니다.");
     }
   };
-  useEffect(() => {
-    const handlePaste = async (event: ClipboardEvent) => {
-      const file = Array.from(event.clipboardData?.items ?? [])
-        .find((item) => item.kind === "file" && item.type.startsWith("image/"))
-        ?.getAsFile();
-      if (!file) return;
-      event.preventDefault();
-      if (!project.projectDirectory) { onToast("클립보드 이미지를 넣으려면 먼저 .barun 프로젝트를 저장해 주세요."); return; }
-      try {
-        addAttachments([await importClipboardAttachment(project.projectDirectory, file)]);
-        onToast("클립보드 이미지를 영수증에 첨부했습니다.");
-      } catch (error) {
-        onToast(error instanceof Error ? error.message : "클립보드 이미지를 첨부하지 못했습니다.");
-      }
-    };
-    window.addEventListener("paste", handlePaste);
-    return () => window.removeEventListener("paste", handlePaste);
-  }, [project.projectDirectory, onToast]);
   const projectedExpenses = project.expenses.some((item) => item.id === draft.id)
     ? project.expenses.map((item) => item.id === draft.id ? draft : item)
     : [...project.expenses, draft];
@@ -1073,6 +1094,14 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
     update("offlineHolders", offlineHolders.filter((holder) => holder.id !== holderId));
   };
   const fuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
+  const appendFuelEvidenceAttachments = (attachments: Attachment[]) => updateProject((current) => {
+    const existing = current.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
+    const fuelAttachments = attachments.map((attachment) => ({ ...attachment, kind: "other" as const }));
+    const categoryEvidence = existing
+      ? current.categoryEvidence.map((evidence) => evidence.id === existing.id ? { ...evidence, attachments: [...evidence.attachments, ...fuelAttachments] } : evidence)
+      : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport" as const, kind: "fuel-calculation" as const, title: "교통비 공통 주유비 산정 증빙", attachments: fuelAttachments, offlineHolders: [] }];
+    return { ...current, categoryEvidence };
+  });
   const addFuelEvidence = async () => {
     if (!project.projectDirectory) { onToast("먼저 .barun 프로젝트를 저장해 주세요."); return; }
     try {
@@ -1081,18 +1110,61 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       const attachments = (await Promise.all(imported.map((attachment) => normalizeAttachmentToImages(project.projectDirectory!, attachment))))
         .flat()
         .map((attachment) => ({ ...attachment, kind: "other" as const }));
-      updateProject((current) => {
-        const existing = current.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
-        const categoryEvidence = existing
-          ? current.categoryEvidence.map((evidence) => evidence.id === existing.id ? { ...evidence, attachments: [...evidence.attachments, ...attachments] } : evidence)
-          : [...current.categoryEvidence, { id: crypto.randomUUID(), category: "transport" as const, kind: "fuel-calculation" as const, title: "교통비 공통 주유비 산정 증빙", attachments, offlineHolders: [] }];
-        return { ...current, categoryEvidence };
-      });
+      appendFuelEvidenceAttachments(attachments);
       onToast(`공통 주유비 산정 증빙 ${attachments.length}개를 추가했습니다.`);
     } catch (error) {
       onToast(error instanceof Error ? error.message : "주유비 산정 증빙을 가져오지 못했습니다.");
     }
   };
+  const armClipboardPaste = (target: "receipt" | "fuel") => {
+    if (!project.projectDirectory) {
+      onToast("클립보드 이미지를 넣으려면 먼저 .barun 프로젝트를 저장해 주세요.");
+      return;
+    }
+    const next = clipboardTarget === target ? null : target;
+    setClipboardTarget(next);
+    onToast(next
+      ? `${target === "fuel" ? "공통 주유비 산정 증빙" : "이 영수증"}에 붙여넣을 준비가 됐습니다. 이제 ⌘V / Ctrl+V를 누르세요.`
+      : "클립보드 붙여넣기 대기를 취소했습니다.");
+  };
+  useEffect(() => {
+    const fuelTargetAvailable = draft.category === "transport" && draft.isFuel;
+    if ((clipboardTarget === "fuel" && !fuelTargetAvailable) || (clipboardTarget === "receipt" && draft.receiptMode !== "online-printable")) {
+      setClipboardTarget(null);
+    }
+  }, [clipboardTarget, draft.category, draft.isFuel, draft.receiptMode]);
+  useEffect(() => {
+    if (!clipboardTarget) return;
+    const handlePaste = async (event: ClipboardEvent) => {
+      const file = clipboardImageFile(event);
+      if (!file) {
+        onToast("클립보드에 이미지가 없습니다. 이미지를 복사한 뒤 다시 붙여넣어 주세요.");
+        return;
+      }
+      event.preventDefault();
+      if (!project.projectDirectory) {
+        setClipboardTarget(null);
+        onToast("클립보드 이미지를 넣으려면 먼저 .barun 프로젝트를 저장해 주세요.");
+        return;
+      }
+      try {
+        const attachment = await importClipboardAttachment(project.projectDirectory, file);
+        if (clipboardTarget === "fuel") {
+          appendFuelEvidenceAttachments([attachment]);
+          onToast("클립보드 이미지를 공통 주유비 산정 증빙에 붙여넣었습니다.");
+        } else {
+          addAttachments([attachment]);
+          onToast("클립보드 이미지를 이 영수증에 붙여넣었습니다.");
+        }
+        setClipboardTarget(null);
+      } catch (error) {
+        setClipboardTarget(null);
+        onToast(error instanceof Error ? error.message : "클립보드 이미지를 붙여넣지 못했습니다.");
+      }
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [clipboardTarget, project.projectDirectory, onToast]);
   const removeFuelEvidence = (attachmentId: string) => updateProject((current) => ({
     ...current,
     categoryEvidence: current.categoryEvidence.map((evidence) => evidence.id === fuelEvidence?.id
@@ -1125,12 +1197,13 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
   const inlineAttachment = draft.receiptMode === "online-printable"
     ? draft.attachments.find((attachment) => attachment.id === inlineAttachmentId) ?? draft.attachments[0]
     : undefined;
-  return <><div className="modal-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="expense-drawer"><div className="drawer-header"><div><span className="eyebrow">EXPENSE</span><h2>{project.expenses.some((item) => item.id === expense.id) ? "지출 수정" : "새 지출 등록"}</h2></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="expense-editor-workspace"><ExpenseEvidencePane project={project} expense={draft} attachment={inlineAttachment} onSelectAttachment={setInlineAttachmentId} onExpandAttachment={setPreviewAttachment} onAttach={attach} /><div className="drawer-body">
+  return <><div className="modal-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="expense-drawer"><div className="drawer-header"><div><span className="eyebrow">EXPENSE</span><h2>{project.expenses.some((item) => item.id === expense.id) ? "지출 수정" : "새 지출 등록"}</h2></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="expense-editor-workspace"><ExpenseEvidencePane project={project} expense={draft} attachment={inlineAttachment} clipboardPasteArmed={clipboardTarget === "receipt"} onSelectAttachment={setInlineAttachmentId} onExpandAttachment={setPreviewAttachment} onAttach={attach} onArmClipboardPaste={() => armClipboardPaste("receipt")} /><div className="drawer-body">
     <div className={`editor-live-reconcile ${liveReconciliation.difference === 0 ? "balanced" : "unbalanced"}`}><div><span>수입</span><strong>{money(liveReconciliation.income.total)}</strong></div><i>−</i><div><span>이 지출 포함 총지출</span><strong>{money(liveReconciliation.expense.total)}</strong></div><i>−</i><div><span>환입액</span><strong>{money(liveReconciliation.returnAmount)}</strong></div><i>=</i><div><span>실시간 차액</span><strong>{money(liveReconciliation.difference)}</strong></div></div>
     <div className="field-grid editor-grid"><label className="field"><span>항목</span><select value={draft.category} onChange={(event) => update("category", event.target.value as CategoryId)}>{CATEGORY_DEFINITIONS.map((category) => <option key={category.id} value={category.id}>{category.number}. {category.label}</option>)}</select></label><Field label="날짜" type="date" value={draft.date} onChange={(value) => update("date", value)} /><label className="field full"><span>내용 (지출 목적)</span><input value={draft.content} onChange={(event) => update("content", event.target.value)} placeholder="예: 첫날 저녁 식사" /><small>어디에 왜 썼는지 적습니다. 금전출납부의 주된 내용으로 들어갑니다.</small></label><Field label="금액" type="number" value={String(draft.amount || "")} onChange={(value) => update("amount", Number(value))} /><Field label="세부 품목 (영수증 내역)" value={draft.itemDetails} placeholder="예: 돈까스 12개, 김밥 24개" helper="금전출납부의 ‘내용’ 칸에서 지출 목적 뒤에 _로 이어 붙습니다." onChange={(value) => update("itemDetails", value)} />{draft.category === "meals" && <Field label="식사 인원" type="number" value={String(draft.mealHeadcount || "")} onChange={(value) => update("mealHeadcount", Number(value))} />}{draft.category === "transport" && <label className="check-field"><input type="checkbox" checked={draft.isFuel} onChange={(event) => update("isFuel", event.target.checked)} /><Fuel size={17} /><span><strong>주유비 지출</strong><small>아래 공통 산정 증빙을 함께 검사합니다.</small></span></label>}<label className="field full note-field"><span>비고</span><textarea value={draft.note} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value, noteMode: "manual" }))} placeholder="공식 금전출납부 비고란에 표시할 내용만" />{draft.category === "teamMinistry" && draft.id === firstTeamMinistryId && <button type="button" className="note-auto-button" onClick={() => setDraft((current) => ({ ...current, note: automaticTeamMinistryNote, noteMode: "auto" }))}><RotateCcw size={13} /> 지원금·회비 비고 자동 작성</button>}</label></div>
     {draft.category === "teamMinistry" && <div className="support-allocation-field selected automatic"><span className="support-allocation-check"><Check size={14} /></span><CircleDollarSign size={20} /><span><strong>팀별사역지원금 사용액으로 자동 계산</strong><small>지원금보다 남은 금액은 환입하고, 초과분은 팀회비 충당액으로 자동 계산합니다.</small></span></div>}
-    {draft.category === "transport" && draft.isFuel && <div className="fuel-evidence-panel">
-      <div className="fuel-evidence-heading"><div><Fuel size={19} /><span><strong>공통 주유비 산정 증빙</strong><small>각 주유 영수증과 1:1로 짝짓지 않습니다. 온라인 자료와 인쇄 후 붙일 오프라인 자료를 함께 사용할 수 있습니다.</small></span></div><div className="fuel-evidence-actions"><button type="button" className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={15} /> 온라인 파일</button><button type="button" className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={15} /> 오프라인 칸</button></div></div>
+    {draft.category === "transport" && draft.isFuel && <div className={`fuel-evidence-panel ${clipboardTarget === "fuel" ? "paste-waiting" : ""}`}>
+      <div className="fuel-evidence-heading"><div><Fuel size={19} /><span><strong>공통 주유비 산정 증빙</strong><small>교통비 영수증철의 첫 부분에 배치됩니다. 파일을 고르거나 붙여넣기 버튼을 누른 뒤 ⌘V / Ctrl+V를 누르세요.</small></span></div><div className="fuel-evidence-actions"><button type="button" className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={15} /> 온라인 파일</button><button type="button" className={`button secondary clipboard-arm-button ${clipboardTarget === "fuel" ? "active" : ""}`} aria-pressed={clipboardTarget === "fuel"} onClick={() => armClipboardPaste("fuel")} disabled={!project.projectDirectory}><ClipboardPaste size={15} /> {clipboardTarget === "fuel" ? "붙여넣기 대기 중" : "클립보드"}</button><button type="button" className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={15} /> 오프라인 칸</button></div></div>
+      {clipboardTarget === "fuel" && <div className="clipboard-waiting-message"><ClipboardPaste size={15} /><span><strong>공통 주유비 증빙에 붙여넣습니다</strong><small>이제 ⌘V / Ctrl+V를 누르세요. 한 장을 붙이면 대기 상태가 자동으로 끝납니다.</small></span></div>}
       {(fuelEvidence?.attachments.length ?? 0) > 0 && <div className="fuel-evidence-subheading">온라인 산정 자료 {fuelEvidence!.attachments.length}개</div>}
       {fuelEvidence?.attachments.map((attachment, index) => <div className="fuel-evidence-row" key={attachment.id}><span>{index + 1}</span><button type="button" className="attachment-preview-trigger" onClick={() => setPreviewAttachment(attachment)} title="클릭하여 확대 보기">{attachment.originalName}</button><button type="button" className="icon-button" aria-label="온라인 주유비 산정 증빙 삭제" onClick={() => removeFuelEvidence(attachment.id)}><X size={14} /></button></div>)}
       {(fuelEvidence?.offlineHolders?.length ?? 0) > 0 && <div className="fuel-evidence-subheading">오프라인 부착칸 {fuelEvidence!.offlineHolders!.length}개</div>}
@@ -1138,20 +1211,20 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       {!fuelEvidence?.attachments.length && !fuelEvidence?.offlineHolders?.length && <div className="fuel-evidence-empty"><AlertCircle size={15} /> 온라인 파일을 첨부하거나 오프라인 부착칸을 하나 이상 추가해 주세요. 둘 다 여러 개 사용할 수 있습니다.</div>}
     </div>}
     <div className="editor-section"><div className="section-title"><div><span>영수증 형태</span><small>실물 원본은 필요한 조각 수만큼 빈 부착칸을 만들고, 온라인 영수증은 이미지로 출력합니다.</small></div></div><div className="choice-cards"><button className={draft.receiptMode === "offline-original" ? "selected" : ""} onClick={() => setDraft((current) => ({ ...current, receiptMode: "offline-original", offlineHolders: offlineHoldersForExpense(current), attachments: current.attachments.map((attachment) => ({ ...attachment, kind: "offline-preview" })) }))}><ReceiptText size={22} /><strong>오프라인 실물</strong><span>출력 후 원본 부착</span></button><button className={draft.receiptMode === "online-printable" ? "selected" : ""} onClick={() => setDraft((current) => ({ ...current, receiptMode: "online-printable", attachments: current.attachments.map((attachment, index) => attachment.kind === "offline-preview" ? { ...attachment, kind: index === 0 ? "online-receipt" : "other" } : attachment) }))}><FileImage size={22} /><strong>온라인 자료</strong><span>이미지 함께 출력</span></button></div>{draft.receiptMode === "offline-original" && <><label className="original-confirm"><input type="checkbox" checked={draft.originalConfirmed} onChange={(event) => update("originalConfirmed", event.target.checked)} /><Check size={15} /><span>제출할 실물 영수증 원본을 보관 중입니다.</span></label><div className="offline-holder-setup"><div className="offline-holder-heading"><span><strong>실물 부착칸 {offlineHolders.length}개</strong><small>긴 영수증을 잘라 붙일 때 칸을 추가하세요. 각 칸은 영수증철에서 다시 조절할 수 있습니다.</small></span><button type="button" className="button secondary" onClick={addDraftOfflineHolder}><Plus size={15} /> 부착칸 추가</button></div>{offlineHolders.map((holder, index) => <div className="offline-holder-row" key={holder.id}><span className="holder-index">{index + 1}</span><strong>실물 조각 {index + 1}</strong><label><span>너비</span><input type="number" min="32" max="190" value={holder.widthMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { widthMm: Math.min(190, Math.max(32, Number(event.target.value) || 32)) })} /><em>mm</em></label><b>×</b><label><span>높이</span><input type="number" min="20" max="262" value={holder.heightMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { heightMm: Math.min(262, Math.max(20, Number(event.target.value) || 20)) })} /><em>mm</em></label><button type="button" className="icon-button" aria-label={`실물 부착칸 ${index + 1} 삭제`} disabled={offlineHolders.length <= 1} onClick={() => removeDraftOfflineHolder(holder.id)}><Trash2 size={14} /></button></div>)}</div></>}
-      {draft.receiptMode === "online-printable" && <><div className="attachment-box"><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진 또는 PDF"}</strong><small>{project.projectDirectory ? "여러 파일을 선택하거나 클립보드 이미지를 바로 붙여넣으세요." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><span className="paste-shortcut"><ClipboardPaste size={15} /> ⌘V / Ctrl+V</span><button className="button secondary" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 여러 개 선택</button></div>{draft.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><FileImage size={17} /><button type="button" className="attachment-preview-trigger" onClick={() => { setInlineAttachmentId(attachment.id); setPreviewAttachment(attachment); }} title="클릭하여 확대 보기">{attachment.originalName}</button><select value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select><button aria-label="첨부파일 삭제" onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><X size={15} /></button></div>)}</>}
+      {draft.receiptMode === "online-printable" && <><div className={`attachment-box ${clipboardTarget === "receipt" ? "paste-waiting" : ""}`}><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진 또는 PDF"}</strong><small>{project.projectDirectory ? "파일을 선택하거나 클립보드 버튼을 누른 뒤 이미지를 붙여넣으세요." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><button type="button" className={`paste-shortcut clipboard-arm-button ${clipboardTarget === "receipt" ? "active" : ""}`} aria-pressed={clipboardTarget === "receipt"} onClick={() => armClipboardPaste("receipt")} disabled={!project.projectDirectory}><ClipboardPaste size={15} /> {clipboardTarget === "receipt" ? "붙여넣기 대기 중 · ⌘V / Ctrl+V" : "클립보드 붙여넣기"}</button><button className="button secondary" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 여러 개 선택</button></div>{clipboardTarget === "receipt" && <div className="clipboard-waiting-message receipt"><ClipboardPaste size={15} /><span><strong>이 영수증에 붙여넣습니다</strong><small>이제 ⌘V / Ctrl+V를 누르세요. 한 장을 붙이면 대기 상태가 자동으로 끝납니다.</small></span></div>}{draft.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><FileImage size={17} /><button type="button" className="attachment-preview-trigger" onClick={() => { setInlineAttachmentId(attachment.id); setPreviewAttachment(attachment); }} title="클릭하여 확대 보기">{attachment.originalName}</button><select value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select><button aria-label="첨부파일 삭제" onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><X size={15} /></button></div>)}</>}
     </div>
     <div className="editor-section internal-section"><div className="section-title"><div><span>누가 결제했나요? <em>앱 내부 전용</em></span><small>기본은 팀비입니다. 팀원이 먼저 냈을 때만 이름을 입력하세요.</small></div></div><div className="choice-cards payment"><button className={draft.paymentSource === "team" ? "selected" : ""} onClick={() => update("paymentSource", "team")}><WalletCards size={20} /><span><strong>팀비로 결제</strong><small>별도 정산 없음</small></span></button><button className={draft.paymentSource === "personal" ? "selected" : ""} onClick={() => update("paymentSource", "personal")}><Users size={20} /><span><strong>개인이 먼저 결제</strong><small>나중에 돌려줄 금액</small></span></button></div>{draft.paymentSource === "personal" && <div className="payer-inline"><label className="field"><span>먼저 결제한 사람</span><input list="known-payers" value={payerName} onChange={(event) => { const name = event.target.value; setPayerName(name); const existing = project.people.find((person) => person.name === name); update("payerId", existing?.id); }} placeholder="이름을 바로 입력하세요" /><datalist id="known-payers">{project.people.filter((person) => person.name.trim()).map((person) => <option value={person.name} key={person.id} />)}</datalist><small>{project.people.some((person) => person.name === payerName) ? "기존 정산 대상자를 선택했습니다." : payerName.trim() ? "새 이름은 내역 반영 시 자동 등록됩니다." : "설정에서 미리 추가할 필요가 없습니다."}</small></label><div className="field-grid settlement-fields"><Field label="돌려줄 금액" type="number" value={String(draft.settlementTargetAmount || draft.amount || "")} onChange={(value) => update("settlementTargetAmount", Number(value))} /><Field label="이미 돌려준 금액" type="number" value={String(draft.settledAmount || "")} onChange={(value) => update("settledAmount", Number(value))} /></div></div>}<div className="internal-caption"><BadgeCheck size={15} /> 이름과 정산 정보는 공식 Excel과 영수증철에 표시되지 않습니다.</div></div>
   </div></div><div className="drawer-footer"><button className="button ghost" onClick={onClose}>취소</button><button className="button accent" onClick={() => onSave(draft, payerName)} disabled={!draft.date || !draft.content.trim() || draft.amount <= 0 || (draft.paymentSource === "personal" && !payerName.trim())}><Check size={17} /> 내역 반영</button></div></div></div>{previewAttachment && <AttachmentPreviewModal project={project} attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />}</>;
 }
 
-function ExpenseEvidencePane({ project, expense, attachment, onSelectAttachment, onExpandAttachment, onAttach }: { project: ProjectData; expense: Expense; attachment?: Attachment; onSelectAttachment: (id: string) => void; onExpandAttachment: (attachment: Attachment) => void; onAttach: () => void }) {
+function ExpenseEvidencePane({ project, expense, attachment, clipboardPasteArmed, onSelectAttachment, onExpandAttachment, onAttach, onArmClipboardPaste }: { project: ProjectData; expense: Expense; attachment?: Attachment; clipboardPasteArmed: boolean; onSelectAttachment: (id: string) => void; onExpandAttachment: (attachment: Attachment) => void; onAttach: () => void; onArmClipboardPaste: () => void }) {
   const offlineHolders = offlineHoldersForExpense(expense);
   if (expense.receiptMode === "offline-original") {
     return <aside className="expense-evidence-pane offline"><div className="expense-evidence-heading"><span><ReceiptText size={20} /></span><div><strong>실물 영수증을 보며 입력하세요</strong><small>오프라인 원본은 앱에서 이미지로 대신하지 않습니다.</small></div></div><div className="offline-evidence-guide"><div className="offline-receipt-visual"><ReceiptText size={48} /><strong>실물 원본</strong><span>영수증을 화면 옆에 두고<br />날짜·내용·금액·세부 품목을 확인하세요.</span></div><div className="offline-evidence-summary"><strong>영수증철 부착 영역 {offlineHolders.length}개</strong>{offlineHolders.map((holder, index) => <span key={holder.id}><b>{index + 1}</b>{offlineHolderDimensionsLabel(holder)}</span>)}</div></div><div className="expense-evidence-note"><AlertCircle size={15} /><span>실물 영수증은 인쇄한 영수증철의 중앙 표시 영역에 직접 붙입니다.</span></div></aside>;
   }
-  return <aside className="expense-evidence-pane online"><div className="expense-evidence-heading"><span><FileImage size={20} /></span><div><strong>영수증을 보며 입력하세요</strong><small>오른쪽 입력란을 수정하는 동안 첨부 이미지를 함께 확인할 수 있습니다.</small></div><em>{expense.attachments.length}개</em></div><div className="inline-evidence-stage">{attachment
+  return <aside className={`expense-evidence-pane online ${clipboardPasteArmed ? "paste-waiting" : ""}`}><div className="expense-evidence-heading"><span><FileImage size={20} /></span><div><strong>영수증을 보며 입력하세요</strong><small>오른쪽 입력란을 수정하는 동안 첨부 이미지를 함께 확인할 수 있습니다.</small></div><em>{expense.attachments.length}개</em></div><div className="inline-evidence-stage">{attachment
     ? <InlineExpenseAttachmentPreview project={project} attachment={attachment} onExpand={() => onExpandAttachment(attachment)} />
-    : <div className="inline-evidence-empty"><ScanLine size={42} /><strong>첨부된 온라인 영수증이 없습니다</strong><span>이미지를 추가하면 이 영역에서 바로 보면서 입력할 수 있습니다.</span><button className="button secondary" onClick={onAttach} disabled={!project.projectDirectory}><Plus size={16} /> 영수증 이미지 추가</button></div>}</div>{expense.attachments.length > 0 && <div className="inline-evidence-tabs">{expense.attachments.map((item, index) => <button type="button" className={item.id === attachment?.id ? "active" : ""} onClick={() => onSelectAttachment(item.id)} key={item.id}><span>{index + 1}</span><strong>{item.originalName}</strong></button>)}</div>}</aside>;
+    : <div className="inline-evidence-empty"><ScanLine size={42} /><strong>첨부된 온라인 영수증이 없습니다</strong><span>파일을 선택하거나 붙여넣기 버튼을 누른 뒤 클립보드 이미지를 넣으세요.</span><div className="inline-evidence-actions"><button className="button secondary" onClick={onAttach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 선택</button><button className={`button secondary clipboard-arm-button ${clipboardPasteArmed ? "active" : ""}`} aria-pressed={clipboardPasteArmed} onClick={onArmClipboardPaste} disabled={!project.projectDirectory}><ClipboardPaste size={16} /> {clipboardPasteArmed ? "이제 ⌘V / Ctrl+V" : "클립보드 붙여넣기"}</button></div></div>}</div>{expense.attachments.length > 0 && <div className="inline-evidence-tabs">{expense.attachments.map((item, index) => <button type="button" className={item.id === attachment?.id ? "active" : ""} onClick={() => onSelectAttachment(item.id)} key={item.id}><span>{index + 1}</span><strong>{item.originalName}</strong></button>)}</div>}</aside>;
 }
 
 function InlineExpenseAttachmentPreview({ project, attachment, onExpand }: { project: ProjectData; attachment: Attachment; onExpand: () => void }) {
