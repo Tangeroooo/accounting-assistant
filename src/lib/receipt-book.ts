@@ -132,6 +132,10 @@ export function exportedOfflinePlaceholderLabel(item: ReceiptBookItem) {
   return receiptWatermarkLabel(item);
 }
 
+export function receiptAmountLabel(item: ReceiptBookItem) {
+  return item.evidenceId ? undefined : `${item.expense.amount.toLocaleString("ko-KR")}원`;
+}
+
 export function offlinePlaceholderLabel(item: ReceiptBookItem) {
   if (item.evidenceId) {
     const holders = item.expense.offlineHolders ?? [];

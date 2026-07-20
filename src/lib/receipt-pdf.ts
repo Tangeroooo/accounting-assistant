@@ -9,6 +9,7 @@ import {
   DEFAULT_IMAGE_LAYOUT,
   exportedOfflinePlaceholderLabel,
   layoutReceiptBookItems,
+  receiptAmountLabel,
 } from "./receipt-book";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -126,6 +127,7 @@ function drawOfflinePlaceholder(
   context: CanvasRenderingContext2D,
   bounds: { x: number; y: number; width: number; height: number },
   label: string,
+  amountLabel?: string,
 ) {
   const width = mm(32);
   const height = mm(17);
@@ -141,10 +143,15 @@ function drawOfflinePlaceholder(
   context.textBaseline = "middle";
   context.fillStyle = "#4b5563";
   context.font = `700 ${Math.round(mm(2.2))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
-  context.fillText(label, x + width / 2, y + mm(6.2), width - mm(2));
+  context.fillText(label, x + width / 2, y + mm(amountLabel ? 4.7 : 6.2), width - mm(2));
+  if (amountLabel) {
+    context.fillStyle = "#4b5563";
+    context.font = `700 ${Math.round(mm(1.75))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
+    context.fillText(amountLabel, x + width / 2, y + mm(8.7), width - mm(2));
+  }
   context.fillStyle = "#7c8592";
   context.font = `500 ${Math.round(mm(1.55))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
-  context.fillText("실물을 중앙에 붙이세요", x + width / 2, y + mm(11), width - mm(2));
+  context.fillText("실물을 중앙에 붙이세요", x + width / 2, y + mm(amountLabel ? 12.7 : 11), width - mm(2));
   context.restore();
 }
 
@@ -178,7 +185,7 @@ export async function renderReceiptBookObjectPages(project: ProjectData): Promis
       if (!context) throw new Error("영수증철 개체를 만들 수 없습니다.");
       const bounds = { x: 0, y: 0, width: objectCanvas.width, height: objectCanvas.height };
       if (item.offlineHolder) {
-        drawOfflinePlaceholder(context, bounds, exportedOfflinePlaceholderLabel(item));
+        drawOfflinePlaceholder(context, bounds, exportedOfflinePlaceholderLabel(item), receiptAmountLabel(item));
       } else if (item.attachment) {
         const rendered = renderedAttachments.get(item.attachment.id);
         if (!rendered) return [];
