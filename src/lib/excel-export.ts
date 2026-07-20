@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import templateUrl from "../../resources/accounting-template.xlsx?url";
 import { CATEGORY_DEFINITIONS, getCategory, type Expense, type ProjectData } from "../types";
-import { applyDerivedState, teamMinistryExpenseTotal } from "./accounting";
+import { applyDerivedState, isAutoTeamMinistryNote, teamMinistryExpenseTotal } from "./accounting";
 
 const NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
@@ -98,12 +98,14 @@ const formatLedgerDate = (date: string) => {
 };
 
 const expenseContent = (expense: Expense) => {
+  const category = getCategory(expense.category).label;
+  const content = expense.content.trim().replace(/^\[[^\]]+\]\s*/, "");
+  const taggedContent = `[${category}] ${content}`;
   const details = expense.itemDetails.trim();
-  const base = details ? `${expense.content} (${details})` : expense.content;
   if (expense.category === "meals" && expense.mealHeadcount) {
-    return `${base} / ${expense.mealHeadcount}명`;
+    return `${taggedContent}_${expense.mealHeadcount}명${details ? `_${details}` : ""}`;
   }
-  return base;
+  return details ? `${taggedContent}_${details}` : taggedContent;
 };
 
 const formatKoreanDate = (date: string) => {
@@ -303,6 +305,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
       ["A", "B", "C", "D", "E", "F"].map((column) => [column, cellAt(document, row, column)]),
     ),
   );
+  const teamMinistryAutoNoteStyle = cellAt(document, 34, "M");
 
   for (const row of all<Element>(sheetData, ":scope > row")) {
     for (const cell of all<Element>(row, ":scope > c")) {
@@ -338,7 +341,16 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
       const style = offset === 0 ? sources.first : sources.middle;
       const expense = expenses[offset];
       for (const column of ["A", "B", "C", "D", "E", "F"]) {
-        const cell = cloneCell(document, style[column], column, rowIndex);
+        const useAutoNoteStyle = column === "F"
+          && offset === 0
+          && expense?.noteMode === "auto"
+          && isAutoTeamMinistryNote(expense.note);
+        const cell = cloneCell(
+          document,
+          useAutoNoteStyle ? teamMinistryAutoNoteStyle : style[column],
+          column,
+          rowIndex,
+        );
         if (column === "A" && offset === 0) setText(document, cell, getCategory(definition.id).label);
         if (expense) {
           if (column === "B") setText(document, cell, formatLedgerDate(expense.date));
@@ -349,6 +361,18 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
         }
         appendCellOrdered(row, cell);
       }
+    }
+
+    if (
+      definition.id === "teamMinistry" &&
+      expenses[0]?.noteMode === "auto" &&
+      isAutoTeamMinistryNote(expenses[0].note)
+    ) {
+      const mergeEnd = Math.min(start + 2, total - 1);
+      const hasConflictingNote = expenses
+        .slice(1, mergeEnd - start + 1)
+        .some((expense) => expense.note.trim());
+      if (!hasConflictingNote && mergeEnd > start) addMerge(`F${start}:F${mergeEnd}`);
     }
 
     const totalRow = ensureRow(document, sheetData, total);

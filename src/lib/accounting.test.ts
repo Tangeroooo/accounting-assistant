@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDerivedState, assignPayerFromExpense, incomeTotals, reconciliationSummary, settlementSummaries, sortAndNumberExpenses, validateProject } from "./accounting";
+import { applyDerivedState, assignPayerFromExpense, incomeTotals, reconciliationSummary, settlementSummaries, sortAndNumberExpenses, teamMinistryAutoNote, validateProject } from "./accounting";
 import { createEmptyProject, type Expense } from "../types";
 
 const expense = (partial: Partial<Expense>): Expense => ({
@@ -77,16 +77,41 @@ describe("교육자료 기반 검산", () => {
     });
   });
 
-  it("팀별사역비가 지원금을 넘으면 회비 충당 여부를 검토하도록 알린다", () => {
+  it("팀별사역비가 지원금을 넘으면 환입액을 0원으로 두고 초과 경고를 만들지 않는다", () => {
     const project = createEmptyProject();
     project.incomes = [{ id: "support", type: "teamSupport", amount: 50_000, receivedAt: "", memo: "" }];
     project.expenses = [expense({ category: "teamMinistry", amount: 70_000 })];
 
     expect(reconciliationSummary(project).returnAmount).toBe(0);
-    expect(validateProject(project)).toContainEqual(expect.objectContaining({
-      id: "team-ministry-over-support",
-      severity: "warning",
-    }));
+    expect(validateProject(project).some((issue) => issue.id === "team-ministry-over-support")).toBe(false);
+  });
+
+  it("팀별사역비 첫 행에 지원금과 회비 충당액을 원본 예시 형식으로 자동 작성한다", () => {
+    const project = createEmptyProject();
+    project.incomes = [{ id: "support", type: "teamSupport", amount: 300_000, receivedAt: "", memo: "" }];
+    project.expenses = [expense({ id: "team", category: "teamMinistry", amount: 305_850 })];
+
+    expect(teamMinistryAutoNote(project)).toBe("팀별사역지원금 300.000원\n팀회비\n5.850원 사용");
+    expect(applyDerivedState(project).expenses[0]).toMatchObject({
+      note: "팀별사역지원금 300.000원\n팀회비\n5.850원 사용",
+      noteMode: "auto",
+    });
+
+    project.expenses[0].note = "담당자 확인 완료";
+    project.expenses[0].noteMode = "manual";
+    expect(applyDerivedState(project).expenses[0].note).toBe("담당자 확인 완료");
+  });
+
+  it("날짜나 항목 변경으로 첫 팀별사역비가 바뀌면 자동 비고도 첫 행으로 옮긴다", () => {
+    const project = createEmptyProject();
+    project.incomes = [{ id: "support", type: "teamSupport", amount: 30_000, receivedAt: "", memo: "" }];
+    project.expenses = [expense({ id: "later", category: "teamMinistry", date: "2026-07-10", amount: 20_000 })];
+    project.expenses = applyDerivedState(project).expenses;
+    project.expenses.push(expense({ id: "earlier", category: "teamMinistry", date: "2026-07-01", amount: 20_000, createdOrder: 2 }));
+
+    const result = applyDerivedState(project);
+    expect(result.expenses.find((item) => item.id === "earlier")).toMatchObject({ noteMode: "auto" });
+    expect(result.expenses.find((item) => item.id === "later")).toMatchObject({ note: "", noteMode: undefined });
   });
 
   it("잘못된 마킹 방식으로 저장된 임시 프로젝트는 6. 팀별사역비로 옮긴다", () => {
@@ -125,6 +150,23 @@ describe("교육자료 기반 검산", () => {
       attachments: [{ id: "file", relativePath: "attachments/fuel.png", originalName: "fuel.png", mimeType: "image/png", kind: "other" }],
     }];
     expect(validateProject(project).some((issue) => issue.id === "missing-shared-fuel-evidence")).toBe(false);
+  });
+
+  it("주유비는 공통 산정 증빙과 별도로 실물 영수증 원본을 요구한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [expense({ isFuel: true, receiptMode: "online-printable" })];
+    expect(validateProject(project).some((issue) => issue.id.endsWith("-fuel-original"))).toBe(true);
+  });
+
+  it("팀별사역비의 교역자 선물과 국내 30만원 초과 헌금을 안내한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [
+      expense({ id: "gift", category: "teamMinistry", content: "목사님 선물" }),
+      expense({ id: "offering", category: "offering", amount: 310_000 }),
+    ];
+    const issues = validateProject(project);
+    expect(issues.some((issue) => issue.id === "expense-gift-team-ministry-gift")).toBe(true);
+    expect(issues.some((issue) => issue.id === "offering-over-domestic-guideline")).toBe(true);
   });
 
   it("개인 선결제는 사람별로 합산하고 공식 지출금액과 동일하게 검산한다", () => {

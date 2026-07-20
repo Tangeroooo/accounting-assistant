@@ -88,6 +88,7 @@ export interface Expense {
   content: string;
   amount: number;
   note: string;
+  noteMode?: "auto" | "manual";
   receiptMode: ReceiptMode;
   originalConfirmed: boolean;
   attachments: Attachment[];

@@ -90,6 +90,24 @@ export function reconciliationSummary(project: ProjectData) {
   return { income, expense, teamMinistryAmount, returnAmount, difference };
 }
 
+const AUTO_TEAM_MINISTRY_NOTE = /^팀별사역지원금 [\d.,]+원(?:\n팀회비\n[\d.,]+원 사용)?$/;
+
+const formatTemplateAmount = (amount: number) =>
+  Math.max(0, Math.trunc(amount)).toLocaleString("ko-KR").replaceAll(",", ".");
+
+export function isAutoTeamMinistryNote(note: string) {
+  return AUTO_TEAM_MINISTRY_NOTE.test(note.trim());
+}
+
+export function teamMinistryAutoNote(project: ProjectData) {
+  const { income, teamMinistryAmount } = reconciliationSummary(project);
+  const duesUsed = Math.max(teamMinistryAmount - income.teamSupport, 0);
+  const supportLine = `팀별사역지원금 ${formatTemplateAmount(income.teamSupport)}원`;
+  return duesUsed > 0
+    ? `${supportLine}\n팀회비\n${formatTemplateAmount(duesUsed)}원 사용`
+    : supportLine;
+}
+
 export function settlementSummaries(project: ProjectData): SettlementSummary[] {
   return project.people
     .map((person) => {
@@ -127,17 +145,6 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
   const expenses = sortAndNumberExpenses(project.expenses);
   const reconciliation = reconciliationSummary({ ...project, expenses });
   const { difference: reconciledDifference } = reconciliation;
-
-  if (reconciliation.teamMinistryAmount > reconciliation.income.teamSupport) {
-    const excess = reconciliation.teamMinistryAmount - reconciliation.income.teamSupport;
-    issues.push({
-      id: "team-ministry-over-support",
-      severity: "warning",
-      scope: "project",
-      title: "팀별사역비가 지원금을 초과합니다",
-      detail: `6. 팀별사역비 지출이 실제 팀별사역지원금보다 ${excess.toLocaleString("ko-KR")}원 많습니다. 초과분은 회비에서 충당되는지 확인해 주세요.`,
-    });
-  }
 
   if (reconciledDifference !== 0) {
     issues.push({
@@ -188,6 +195,16 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
         detail: "오프라인 영수증은 최종 출력 전에 원본 보유 여부를 확인해야 합니다.",
       });
     }
+    if (item.isFuel && item.receiptMode !== "offline-original") {
+      issues.push({
+        id: `${prefix}-fuel-original`,
+        severity: "error",
+        scope: "evidence",
+        expenseId: item.id,
+        title: "주유비는 실물 영수증 원본이 필요합니다",
+        detail: "주유비 산정 증빙과 별도로 주유소에서 받은 실물 영수증 원본을 제출해야 합니다.",
+      });
+    }
     if (item.receiptMode === "online-printable" && item.attachments.length === 0) {
       issues.push({
         id: `${prefix}-online-file`,
@@ -207,6 +224,46 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
         title: "식사 인원이 입력되지 않았습니다",
         detail: "식대간식비는 먹은 인원을 내용에 포함해야 합니다.",
       });
+    }
+    const description = `${item.content} ${item.itemDetails}`;
+    if (
+      item.category === "teamMinistry" &&
+      /(목사|목회자|교역자|선교사)/.test(description) &&
+      /선물/.test(description)
+    ) {
+      issues.push({
+        id: `${prefix}-team-ministry-gift`,
+        severity: "error",
+        scope: "expense",
+        expenseId: item.id,
+        title: "교역자·선교사 선물은 선물구입비로 분류합니다",
+        detail: "교육자료 기준에 따라 이 지출의 항목을 5. 선물구입비로 변경해 주세요.",
+      });
+    }
+    if (/여행자\s*보험|단체\s*보험/.test(description)) {
+      if (!hasAttachment(item, ["insurance-certificate"])) {
+        issues.push({
+          id: `${prefix}-insurance-certificate`,
+          severity: "error",
+          scope: "evidence",
+          expenseId: item.id,
+          title: "보험증권이 필요합니다",
+          detail: "여행자·단체보험은 결제 증빙과 함께 보험증권을 첨부해 주세요.",
+        });
+      }
+      if (
+        item.receiptMode === "online-printable" &&
+        !hasAttachment(item, ["online-receipt", "card-slip", "transfer-proof"])
+      ) {
+        issues.push({
+          id: `${prefix}-insurance-payment`,
+          severity: "error",
+          scope: "evidence",
+          expenseId: item.id,
+          title: "보험료 결제 증빙이 필요합니다",
+          detail: "카드전표 또는 이체확인증을 첨부해 주세요.",
+        });
+      }
     }
     if (item.paymentSource === "personal" && !item.payerId) {
       issues.push({
@@ -244,6 +301,19 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
     }
   }
 
+  const domesticOffering = expenses
+    .filter((item) => item.category === "offering")
+    .reduce((sum, item) => sum + Math.max(0, item.amount), 0);
+  if (domesticOffering > 300_000) {
+    issues.push({
+      id: "offering-over-domestic-guideline",
+      severity: "warning",
+      scope: "project",
+      title: "국내 헌금이 30만원을 초과합니다",
+      detail: "교육자료의 국내 헌금 기준을 넘으므로 담당 교역자와 협의했는지 확인해 주세요.",
+    });
+  }
+
   return issues;
 }
 
@@ -272,7 +342,7 @@ export function applyDerivedState(project: ProjectData): ProjectData {
       ? { ...cleanExpense, category: "teamMinistry" as const }
       : cleanExpense;
   });
-  const expenses = sortAndNumberExpenses(migratedExpenses).map((expense) => {
+  let expenses = sortAndNumberExpenses(migratedExpenses).map((expense) => {
     if (expense.paymentSource === "team") {
       return {
         ...expense,
@@ -291,5 +361,23 @@ export function applyDerivedState(project: ProjectData): ProjectData {
           : "partial";
     return { ...expense, settlementTargetAmount: target, settlementStatus: status };
   });
+  const firstTeamMinistryId = expenses.find((expense) => expense.category === "teamMinistry")?.id;
+  if (firstTeamMinistryId) {
+    const automaticNote = teamMinistryAutoNote({ ...project, incomes, expenses });
+    expenses = expenses.map((expense) => {
+      if (expense.id !== firstTeamMinistryId) {
+        return expense.noteMode === "auto" && isAutoTeamMinistryNote(expense.note)
+          ? { ...expense, note: "", noteMode: undefined }
+          : expense;
+      }
+      const shouldUpdate = expense.noteMode === "auto"
+        || (expense.noteMode !== "manual" && (!expense.note.trim() || isAutoTeamMinistryNote(expense.note)));
+      return shouldUpdate ? { ...expense, note: automaticNote, noteMode: "auto" as const } : expense;
+    });
+  } else {
+    expenses = expenses.map((expense) => expense.noteMode === "auto" && isAutoTeamMinistryNote(expense.note)
+      ? { ...expense, note: "", noteMode: undefined }
+      : expense);
+  }
   return { ...project, duesPerPerson, incomes, expenses, updatedAt: new Date().toISOString() };
 }
