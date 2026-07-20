@@ -58,22 +58,17 @@ import {
 import {
   attachmentAbsolutePath,
   chooseProjectFile,
-  clearClovaConfig,
-  getClovaStatus,
   importAttachments,
   importClipboardAttachment,
   isTauri,
   openProjectDocument,
   readAttachmentBytes,
   saveBinaryWithDialog,
-  saveClovaConfig,
   saveProjectPackage,
   saveProjectPackageAs,
-  type ClovaStatus,
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
-import { recognizeReceipt, type OcrSuggestion } from "./lib/ocr";
-import { buildReceiptBookItems, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { buildReceiptBookItems, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookPdf } from "./lib/receipt-pdf";
 import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
 import ProjectOnboarding from "./components/ProjectOnboarding";
@@ -167,7 +162,6 @@ function App() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [toast, setToast] = useState<string | null>(null);
-  const [clovaStatus, setClovaStatus] = useState<ClovaStatus>({ configured: false });
   const [outputBusy, setOutputBusy] = useState<"excel" | "pdf" | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(
     isTauri() && !project.projectDirectory && !project.meta.teamName && project.expenses.length === 0,
@@ -194,10 +188,6 @@ function App() {
     if (projectFilePath) localStorage.setItem("accounting-assistant-project-path", projectFilePath);
     else localStorage.removeItem("accounting-assistant-project-path");
   }, [projectFilePath]);
-
-  useEffect(() => {
-    getClovaStatus().then(setClovaStatus).catch(() => setClovaStatus({ configured: false }));
-  }, []);
 
   const pdfAttachmentSignature = useMemo(() => [
     ...project.expenses.flatMap((expense) => expense.attachments),
@@ -392,10 +382,6 @@ function App() {
           <strong>{incomes.total === 0 ? "첫 단계: 수입 입력" : project.expenses.length === 0 ? "다음 단계: 지출 입력" : issues.length ? `확인할 항목 ${issues.length}개` : "산출물 준비 완료"}</strong>
           <p>{incomes.total === 0 ? "회비 단가와 인원수, 지원금을 먼저 입력하세요." : project.expenses.length === 0 ? "첫 영수증을 보면서 날짜·내용·금액을 등록해 보세요." : issues.length ? "회계 입력·검토에서 누락 항목과 검산 차액을 확인하세요." : "위쪽 산출물 버튼으로 Excel과 PDF를 저장할 수 있습니다."}</p>
         </div>
-        <div className="sidebar-footer">
-          <span className={`status-dot ${clovaStatus.configured ? "online" : "fallback"}`} />
-          <div><strong>{clovaStatus.configured ? "CLOVA 텍스트 추출" : "오픈소스 텍스트 추출"}</strong><span>{clovaStatus.configured ? "보안 저장됨" : "자동 대체 모드"}</span></div>
-        </div>
       </aside>
 
       <main className="main-area">
@@ -421,7 +407,7 @@ function App() {
         {view === "receipts" && <ReceiptBookView project={project} updateProject={updateProject} onSavePdf={handleReceiptPdf} pdfBusy={outputBusy === "pdf"} />}
         {view === "settlements" && <SettlementView project={project} summaries={settlements} updateProject={updateProject} />}
         {view === "settings" && (
-          <SettingsView project={project} projectFilePath={projectFilePath} updateProject={updateProject} clovaStatus={clovaStatus} setClovaStatus={setClovaStatus} onToast={setToast} />
+          <SettingsView project={project} projectFilePath={projectFilePath} updateProject={updateProject} />
         )}
       </main>
 
@@ -603,7 +589,6 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
   const selectedOfflineHolders = selectedItem?.evidenceId
     ? project.categoryEvidence.find((evidence) => evidence.id === selectedItem.evidenceId)?.offlineHolders ?? []
     : selectedItem ? offlineHoldersForExpense(selectedItem.expense) : [];
-  const selectedLayout = { ...DEFAULT_IMAGE_LAYOUT, ...selectedItem?.attachment?.layout };
   const updateAttachmentLayout = (attachmentId: string, updater: (layout: NonNullable<Attachment["layout"]>) => NonNullable<Attachment["layout"]>) => updateProject((current) => {
     const updateAttachment = (attachment: Attachment) => attachment.id === attachmentId ? { ...attachment, layout: updater({ ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout }) } : attachment;
     return {
@@ -622,9 +607,10 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       : evidence),
   }));
   const startDrag = (event: React.PointerEvent<HTMLDivElement>, attachmentId: string) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedAttachmentId(attachmentId);
     setSelectedOfflineHolderId(null);
+    if (croppingAttachmentId !== attachmentId) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { attachmentId, x: event.clientX, y: event.clientY };
   };
   const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -634,7 +620,7 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     const deltaX = (event.clientX - drag.x) / bounds.width * 100;
     const deltaY = (event.clientY - drag.y) / bounds.height * 100;
     dragRef.current = { ...drag, x: event.clientX, y: event.clientY };
-    updateAttachmentLayout(drag.attachmentId, (layout) => ({ ...layout, offsetX: Math.max(-100, Math.min(100, layout.offsetX + deltaX)), offsetY: Math.max(-100, Math.min(100, layout.offsetY + deltaY)) }));
+    updateAttachmentLayout(drag.attachmentId, (layout) => ({ ...layout, offsetX: Math.max(-300, Math.min(300, layout.offsetX + deltaX)), offsetY: Math.max(-300, Math.min(300, layout.offsetY + deltaY)) }));
   };
   const startResize = (event: React.PointerEvent<HTMLButtonElement>, handle: string, placement: ReceiptFlowPlacement) => {
     event.preventDefault();
@@ -667,7 +653,7 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     event.stopPropagation();
     const deltaX = (event.clientX - resize.startX) / resize.pixelsPerMmX;
     const deltaY = (event.clientY - resize.startY) / resize.pixelsPerMmY;
-    const { widthMm, heightMm } = resizePictureFrame({
+    const resizedFrame = resizePictureFrame({
       widthMm: resize.widthMm,
       heightMm: resize.heightMm,
       handle: resize.handle,
@@ -676,12 +662,21 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       cropMode: resize.cropMode,
     });
     if (resize.target === "offline-holder" && (resize.expenseId || resize.evidenceId) && resize.holderId) {
-      updateOfflineHolder({ expenseId: resize.expenseId, evidenceId: resize.evidenceId }, resize.holderId, (holder) => ({ ...holder, widthMm, heightMm }));
+      updateOfflineHolder({ expenseId: resize.expenseId, evidenceId: resize.evidenceId }, resize.holderId, (holder) => ({ ...holder, ...resizedFrame }));
     } else if (resize.attachmentId && resize.layout) {
+      const croppedFrame = resize.cropMode
+        ? cropPictureFrame({
+          widthMm: resize.widthMm,
+          heightMm: resize.heightMm,
+          handle: resize.handle,
+          deltaXmm: deltaX,
+          deltaYmm: deltaY,
+          layout: resize.layout,
+        })
+        : undefined;
       updateAttachmentLayout(resize.attachmentId, () => ({
         ...resize.layout!,
-        widthMm,
-        heightMm,
+        ...(croppedFrame ?? resizedFrame),
         fit: resize.cropMode ? "cover" : resize.layout!.fit,
       }));
     }
@@ -721,15 +716,6 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     updateAttachmentLayout(attachmentId, (layout) => Math.abs((layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio) - aspectRatio) < 0.002
       ? layout
       : { ...layout, aspectRatio });
-  };
-  const resizeSelectedImageByWidth = (nextWidthMm: number) => {
-    if (!selectedAttachmentId || !selectedPlacement) return;
-    const scale = nextWidthMm / selectedPlacement.widthMm;
-    updateAttachmentLayout(selectedAttachmentId, (layout) => ({
-      ...layout,
-      widthMm: nextWidthMm,
-      heightMm: selectedPlacement.heightMm * scale,
-    }));
   };
   const addOfflineHolder = () => {
     if (!selectedItem?.offlineHolder) return;
@@ -784,23 +770,17 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
   };
   return <section className="page receipt-page-wrap"><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." action={<button className="button accent no-print" onClick={onSavePdf} disabled={pdfBusy || project.expenses.length === 0}><Download size={18} /> {pdfBusy ? "PDF 생성 중" : "PDF 저장"}</button>} />
     <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림·홀더 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>세로 우선 자동 배치</strong><span>위→아래로 채운 뒤 다음 열로 이동 · 크기 변경 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 PDF에 넣지 않고 인쇄 후 직접 기입</div></div>
-    <div className={`panel receipt-editor-controls no-print ${selectedItem ? "active" : ""} ${selectedItem?.offlineHolder ? "holder-controls" : ""}`}>
-      <div className="editor-selection">{selectedItem?.offlineHolder ? <ReceiptText size={22} /> : <FileImage size={22} />}<div><strong>{selectedItem?.attachment?.originalName ?? (selectedItem?.offlineHolder ? "오프라인 실물 부착 공간" : "편집할 영수증이나 홀더를 선택하세요")}</strong><span>{selectedItem ? `${getCategory(selectedItem.expense.category).label} · ${selectedItem.expense.content}` : "대상을 클릭하면 조정 도구가 활성화됩니다."}</span></div></div>
-      {selectedItem?.offlineHolder ? <>
-        <label><span>홀더 너비 {Math.round(selectedPlacement?.widthMm ?? selectedItem.offlineHolder.widthMm)}mm</span><input type="range" min="32" max="190" step="1" value={selectedPlacement?.widthMm ?? selectedItem.offlineHolder.widthMm} onChange={(event) => updateOfflineHolder({ expenseId: selectedItem.evidenceId ? undefined : selectedItem.expense.id, evidenceId: selectedItem.evidenceId }, selectedItem.offlineHolder!.id, (holder) => ({ ...holder, widthMm: Number(event.target.value) }))} /></label>
-        <label><span>홀더 높이 {Math.round(selectedPlacement?.heightMm ?? selectedItem.offlineHolder.heightMm)}mm</span><input type="range" min="20" max="262" step="1" value={selectedPlacement?.heightMm ?? selectedItem.offlineHolder.heightMm} onChange={(event) => updateOfflineHolder({ expenseId: selectedItem.evidenceId ? undefined : selectedItem.expense.id, evidenceId: selectedItem.evidenceId }, selectedItem.offlineHolder!.id, (holder) => ({ ...holder, heightMm: Number(event.target.value) }))} /></label>
+    {selectedItem && <div className="receipt-floating-toolbar-anchor no-print"><div className={`panel receipt-editor-controls active ${selectedItem.offlineHolder ? "holder-controls" : ""}`}>
+      <div className="editor-selection">{selectedItem.offlineHolder ? <ReceiptText size={22} /> : <FileImage size={22} />}<div><strong>{selectedItem.attachment?.originalName ?? "오프라인 실물 부착 공간"}</strong><span>{getCategory(selectedItem.expense.category).label} · {selectedItem.expense.content}</span></div></div>
+      {selectedItem.offlineHolder ? <>
         <button className="button secondary" onClick={addOfflineHolder}><Plus size={16} /> {selectedItem.evidenceId ? "같은 증빙 부착칸 추가" : "같은 영수증 조각 추가"}</button>
         <button className="button ghost" disabled={!selectedItem.evidenceId && selectedOfflineHolders.length <= 1} onClick={removeOfflineHolder}><Trash2 size={16} /> 홀더 삭제</button>
       </> : <>
-        <label><span>그림 너비 {Math.round(selectedPlacement?.widthMm ?? selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm)}mm</span><input type="range" min="32" max="190" step="1" value={selectedPlacement?.widthMm ?? selectedLayout.widthMm ?? DEFAULT_IMAGE_LAYOUT.widthMm} disabled={!selectedItem?.attachment} onChange={(event) => resizeSelectedImageByWidth(Number(event.target.value))} /></label>
-        <label><span>이미지 확대·자르기</span><input type="range" min="0.5" max="3" step="0.05" value={selectedLayout.scale} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, scale: Number(event.target.value) }))} /></label>
-        <label><span>좌우</span><input type="range" min="-100" max="100" step="1" value={selectedLayout.offsetX} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, offsetX: Number(event.target.value) }))} /></label>
-        <label><span>상하</span><input type="range" min="-100" max="100" step="1" value={selectedLayout.offsetY} disabled={!selectedItem?.attachment} onChange={(event) => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, offsetY: Number(event.target.value) }))} /></label>
-        <button className={`button crop-button ${croppingAttachmentId === selectedAttachmentId ? "active" : "secondary"}`} disabled={!selectedAttachmentId} onClick={toggleCropMode}><Crop size={16} /> {croppingAttachmentId === selectedAttachmentId ? "자르기 완료" : "자르기"}</button>
-        <button className="button secondary" disabled={!selectedAttachmentId} onClick={() => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, widthMm: layout.heightMm ?? layout.widthMm, heightMm: layout.heightMm ? layout.widthMm : undefined, rotation: (layout.rotation + 90) % 360 }))}><RotateCw size={16} /> 90°</button>
-        <button className="button ghost" disabled={!selectedAttachmentId} onClick={() => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...DEFAULT_IMAGE_LAYOUT, aspectRatio: layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio }))}><RotateCcw size={16} /> 원본 비율</button>
+        <button className={`button crop-button ${croppingAttachmentId === selectedAttachmentId ? "active" : "secondary"}`} onClick={toggleCropMode}><Crop size={16} /> {croppingAttachmentId === selectedAttachmentId ? "자르기 완료" : "자르기"}</button>
+        <button className="button secondary" onClick={() => selectedAttachmentId && updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...layout, widthMm: layout.heightMm ?? layout.widthMm, heightMm: layout.heightMm ? layout.widthMm : undefined, rotation: (layout.rotation + 90) % 360 }))}><RotateCw size={16} /> 90°</button>
+        <button className="button ghost" onClick={() => { setCroppingAttachmentId(null); if (selectedAttachmentId) updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...DEFAULT_IMAGE_LAYOUT, aspectRatio: layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio })); }}><RotateCcw size={16} /> 원본 비율 복원</button>
       </>}
-    </div>
+    </div></div>}
     {receiptPages.map((placements, pageIndex) => <article className="receipt-sheet receipt-flow-sheet" key={`receipt-page-${pageIndex}`}>
       <ReceiptHeader project={project} />
       <div className="receipt-flow-canvas">{placements.map((placement) => <ReceiptTile key={placement.item.id} project={project} placement={placement} selected={placement.item.attachment?.id === selectedAttachmentId || placement.item.offlineHolder?.id === selectedOfflineHolderId} cropMode={placement.item.attachment?.id === croppingAttachmentId} onSelectAttachment={selectAttachment} onSelectOfflineHolder={selectOfflineHolder} onAspectRatio={registerAspectRatio} onPointerDown={startDrag} onPointerMove={moveDrag} onResizeStart={startResize} onResizeMove={moveResize} onPointerUp={finishPointerEdit} />)}</div>
@@ -830,12 +810,13 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
     : `${category.number}-${receiptNumber}${offlineHolder && offlineHolders.length > 1 ? ` · 실물 ${holderIndex + 1}/${offlineHolders.length}` : supporting ? " · 추가" : ""}`;
   const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${cropMode ? "crop-mode" : ""} ${offlineHolder ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
+    {cropMode && attachment && <PrintableAttachment project={project} attachment={attachment} alt="자르기 중인 원본 그림" frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} ghost />}
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
       <span className="receipt-screen-tag no-print">{receiptCode} · {expense.content}</span>
       {offlineHolder
         ? <div className="physical-placeholder"><strong>{offlinePlaceholderLabel(item)}</strong><small>{evidenceId ? "산정 증빙을 중앙에 붙이세요" : "실물 영수증을 중앙에 붙이세요"}</small></div>
         : attachment
-          ? <PrintableAttachment project={project} attachment={attachment} alt={`${receiptCode} ${expense.content}${supporting ? " 추가 증빙" : " 영수증"}`} editable onAspectRatio={(aspectRatio) => onAspectRatio(attachment.id, aspectRatio)} />
+          ? <PrintableAttachment project={project} attachment={attachment} alt={`${receiptCode} ${expense.content}${supporting ? " 추가 증빙" : " 영수증"}`} frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} editable onAspectRatio={(aspectRatio) => onAspectRatio(attachment.id, aspectRatio)} />
           : <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>온라인 영수증 없음</strong><span>PDF 저장 전에 첨부해 주세요.</span></div>}
     </div>
     {selected && (attachment || offlineHolder) && <div className={`picture-selection no-print ${cropMode ? "cropping" : "resizing"}`}>
@@ -845,17 +826,25 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   </section>;
 }
 
-function PrintableAttachment({ project, attachment, alt, editable = false, onAspectRatio }: { project: ProjectData; attachment: Attachment; alt: string; editable?: boolean; onAspectRatio?: (aspectRatio: number) => void }) {
+function PrintableAttachment({ project, attachment, alt, frameWidthMm, frameHeightMm, editable = false, ghost = false, onAspectRatio }: { project: ProjectData; attachment: Attachment; alt: string; frameWidthMm: number; frameHeightMm: number; editable?: boolean; ghost?: boolean; onAspectRatio?: (aspectRatio: number) => void }) {
   const { source, failed } = useAttachmentPreviewSource(project, attachment);
   if (!source) return <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>{failed ? "첨부파일을 불러올 수 없습니다" : "첨부파일 불러오는 중"}</strong></div>;
   if (attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf")) return <div className="missing-receipt-placeholder pdf-conversion-needed"><FileImage size={25} /><strong>PDF 이미지 변환 필요</strong><span>프로젝트를 다시 열면 자동으로 변환합니다.</span></div>;
   const layout = { ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout };
-  const normalizedRotation = ((layout.rotation % 360) + 360) % 360;
-  const quarterTurn = normalizedRotation === 90 || normalizedRotation === 270;
-  const aspectRatio = layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio;
-  const rotationFit = quarterTurn ? Math.max(aspectRatio, 1 / aspectRatio) : 1;
-  const contentStyle = editable ? { transform: `translate(${layout.offsetX}%, ${layout.offsetY}%) scale(${layout.scale * rotationFit}) rotate(${layout.rotation}deg)`, transformOrigin: "center", objectFit: layout.fit } : undefined;
-  return <div className={`online-receipt ${editable ? "editable" : ""}`}><img src={source} alt={alt} draggable={false} style={contentStyle} onLoad={(event) => onAspectRatio?.(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} /></div>;
+  const geometry = pictureLayoutGeometry(frameWidthMm, frameHeightMm, layout);
+  const contentStyle: React.CSSProperties = {
+    position: "absolute",
+    left: `${50 + layout.offsetX}%`,
+    top: `${50 + layout.offsetY}%`,
+    width: `${geometry.contentWidthMm / frameWidthMm * 100}%`,
+    height: `${geometry.contentHeightMm / frameHeightMm * 100}%`,
+    maxWidth: "none",
+    maxHeight: "none",
+    objectFit: "fill",
+    transform: `translate(-50%, -50%) rotate(${layout.rotation}deg)`,
+    transformOrigin: "center",
+  };
+  return <div className={`online-receipt ${editable ? "editable" : ""} ${ghost ? "crop-original-ghost" : ""}`}><img src={source} alt={alt} draggable={false} style={contentStyle} onLoad={(event) => onAspectRatio?.(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} /></div>;
 }
 
 function useAttachmentPreviewSource(project: ProjectData, attachment: Attachment) {
@@ -893,16 +882,12 @@ function SettlementView({ project, summaries, updateProject }: { project: Projec
   </section>;
 }
 
-function SettingsView({ project, projectFilePath, updateProject, clovaStatus, setClovaStatus, onToast }: { project: ProjectData; projectFilePath?: string; updateProject: (updater: (project: ProjectData) => ProjectData) => void; clovaStatus: ClovaStatus; setClovaStatus: (status: ClovaStatus) => void; onToast: (message: string) => void }) {
-  const [url, setUrl] = useState(clovaStatus.invokeUrl ?? "");
-  const [secret, setSecret] = useState("");
+function SettingsView({ project, projectFilePath, updateProject }: { project: ProjectData; projectFilePath?: string; updateProject: (updater: (project: ProjectData) => ProjectData) => void }) {
   const meta = project.meta;
   const setMeta = (key: keyof ProjectData["meta"], value: string | number) => updateProject((current) => ({ ...current, meta: { ...current.meta, [key]: value } }));
-  const handleClovaSave = async () => { try { await saveClovaConfig(url, secret); const status = await getClovaStatus(); setClovaStatus(status); setSecret(""); onToast("CLOVA 텍스트 추출 설정을 OS 보안 저장소에 보관했습니다."); } catch (error) { onToast(error instanceof Error ? error.message : "설정을 저장하지 못했습니다."); } };
-  return <section className="page"><PageHeading eyebrow="PROJECT SETTINGS" title="프로젝트 설정" description="팀 기본정보, .barun 프로젝트 파일, 영수증 텍스트 추출과 내부 관리 정보를 설정합니다. 수입은 회계 입력·검토 화면에서 관리합니다." />
+  return <section className="page"><PageHeading eyebrow="PROJECT SETTINGS" title="프로젝트 설정" description="팀 기본정보, .barun 프로젝트 파일과 내부 정산 이름을 관리합니다. 수입은 회계 입력·검토 화면에서 관리합니다." />
     <div className="settings-grid"><div className="panel form-panel"><div className="panel-heading"><div><span className="eyebrow">BASIC INFO</span><h2>팀 기본 정보</h2></div></div><div className="field-grid"><Field label="공동체" value={meta.community} onChange={(value) => setMeta("community", value)} /><Field label="그룹" value={meta.groupName} onChange={(value) => setMeta("groupName", value)} /><Field label="팀 이름" value={meta.teamName} onChange={(value) => setMeta("teamName", value)} /><Field label="사역지" value={meta.destination} onChange={(value) => setMeta("destination", value)} /><Field label="출발일" type="date" value={meta.startDate} onChange={(value) => setMeta("startDate", value)} /><Field label="귀국일" type="date" value={meta.endDate} onChange={(value) => setMeta("endDate", value)} /><Field label="인원" type="number" value={String(meta.headcount)} onChange={(value) => setMeta("headcount", Number(value))} /><Field label="제출일" type="date" value={meta.submissionDate} onChange={(value) => setMeta("submissionDate", value)} /><Field label="담당 교역자" value={meta.pastorName} onChange={(value) => setMeta("pastorName", value)} /><Field label="팀장" value={meta.leaderName} onChange={(value) => setMeta("leaderName", value)} /><Field label="팀장 연락처" value={meta.leaderPhone} onChange={(value) => setMeta("leaderPhone", value)} /><Field label="회계" value={meta.accountantName} onChange={(value) => setMeta("accountantName", value)} /><Field label="회계 연락처" value={meta.accountantPhone} onChange={(value) => setMeta("accountantPhone", value)} /></div></div>
-      <div className="settings-side"><div className="panel ocr-panel"><div className="panel-heading"><div><span className="eyebrow">TEXT EXTRACTION</span><h2>영수증 텍스트 추출</h2></div><span className={`engine-status ${clovaStatus.configured ? "configured" : "fallback"}`}>{clovaStatus.configured ? "CLOVA" : "Tesseract"}</span></div><p>영수증 이미지에서 날짜·금액·상호 텍스트 추출을 시도해 입력 후보를 제안합니다. 결과는 원본과 대조해야 하며, CLOVA 설정이 없으면 오픈소스 방식으로 자동 대체합니다.</p><label><span>Receipt OCR Invoke URL</span><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://.../document/receipt" /></label><label><span>Secret Key</span><input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder={clovaStatus.configured ? "변경할 때만 새 키 입력" : "X-OCR-SECRET"} /></label><button className="button primary wide" onClick={handleClovaSave} disabled={!url || !secret}>보안 저장소에 저장</button>{clovaStatus.configured && <button className="text-button danger-text" onClick={async () => { await clearClovaConfig(); setClovaStatus({ configured: false }); setUrl(""); onToast("CLOVA 설정을 삭제했습니다. 오픈소스 텍스트 추출로 전환합니다."); }}><RotateCcw size={15} /> 설정 삭제·대체 방식 사용</button>}<small>Secret Key는 .barun 프로젝트나 Excel에 저장하지 않습니다.</small></div>
-        <div className="panel folder-panel"><FileArchive size={25} /><div><span>바른장부 프로젝트 파일</span><strong>{projectFilePath || "아직 저장하지 않음"}</strong></div></div></div>
+      <div className="settings-side"><div className="panel folder-panel"><FileArchive size={25} /><div><span>바른장부 프로젝트 파일</span><strong>{projectFilePath || "아직 저장하지 않음"}</strong></div></div></div>
     </div>
     <div className="settings-bottom-grid settings-bottom-single">
       <div className="panel people-panel"><div className="panel-heading"><div><span className="eyebrow">OPTIONAL · INTERNAL ONLY</span><h2>정산 이름 관리</h2></div><span className="optional-badge">필요할 때만</span></div><p>지출에서 ‘개인이 먼저 결제’를 선택하고 이름을 입력하면 여기에 자동으로 추가됩니다. 이 화면에서는 이름과 계좌 메모를 고칠 수 있습니다.</p><div className="people-rows">{project.people.map((person) => <div className="person-edit-row" key={person.id}><div className="person-avatar">{person.name.slice(0, 1) || "?"}</div><input value={person.name} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, name: event.target.value } : item) }))} placeholder="이름" /><input value={person.bankMemo} onChange={(event) => updateProject((current) => ({ ...current, people: current.people.map((item) => item.id === person.id ? { ...item, bankMemo: event.target.value } : item) }))} placeholder="은행·계좌 메모 (선택)" /><button className="icon-button" aria-label="정산 대상자 삭제" onClick={() => updateProject((current) => ({ ...current, people: current.people.filter((item) => item.id !== person.id), expenses: current.expenses.map((expense) => expense.payerId === person.id ? { ...expense, payerId: undefined } : expense) }))}><Trash2 size={15} /></button></div>)}{project.people.length === 0 && <div className="empty-state small"><Users size={28} /><strong>아직 개인 선결제자가 없습니다</strong><span>미리 등록하지 않아도 됩니다. 지출 입력 중 이름을 바로 적어 주세요.</span></div>}</div></div>
@@ -913,8 +898,6 @@ function SettingsView({ project, projectFilePath, updateProject, clovaStatus, se
 function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSave }: { project: ProjectData; expense: Expense; updateProject: (updater: (project: ProjectData) => ProjectData) => void; onToast: (message: string) => void; onClose: () => void; onSave: (expense: Expense, payerName?: string) => void }) {
   const [draft, setDraft] = useState(expense);
   const [payerName, setPayerName] = useState(project.people.find((person) => person.id === expense.payerId)?.name ?? "");
-  const [ocr, setOcr] = useState<OcrSuggestion | null>(null);
-  const [ocrProgress, setOcrProgress] = useState<number | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const update = <K extends keyof Expense>(key: K, value: Expense[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const addAttachments = (attachments: Attachment[]) => setDraft((current) => ({
@@ -954,18 +937,6 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
   }, [project.projectDirectory, onToast]);
-  const runOcr = async (attachment: Attachment) => {
-    if (!project.projectDirectory) return;
-    setOcrProgress(0);
-    try {
-      setOcr(await recognizeReceipt(project.projectDirectory, attachment, setOcrProgress));
-    } catch (error) {
-      setOcr(null);
-      onToast(error instanceof Error ? error.message : "영수증에서 텍스트를 추출하지 못했습니다.");
-    } finally {
-      setOcrProgress(null);
-    }
-  };
   const projectedExpenses = project.expenses.some((item) => item.id === draft.id)
     ? project.expenses.map((item) => item.id === draft.id ? draft : item)
     : [...project.expenses, draft];
@@ -1064,8 +1035,7 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       {!fuelEvidence?.attachments.length && !fuelEvidence?.offlineHolders?.length && <div className="fuel-evidence-empty"><AlertCircle size={15} /> 온라인 파일을 첨부하거나 오프라인 부착칸을 하나 이상 추가해 주세요. 둘 다 여러 개 사용할 수 있습니다.</div>}
     </div>}
     <div className="editor-section"><div className="section-title"><div><span>영수증 형태</span><small>실물 원본은 필요한 조각 수만큼 빈 부착칸을 만들고, 온라인 영수증은 이미지로 출력합니다.</small></div></div><div className="choice-cards"><button className={draft.receiptMode === "offline-original" ? "selected" : ""} onClick={() => setDraft((current) => ({ ...current, receiptMode: "offline-original", offlineHolders: offlineHoldersForExpense(current) }))}><ReceiptText size={22} /><strong>오프라인 실물</strong><span>출력 후 원본 부착</span></button><button className={draft.receiptMode === "online-printable" ? "selected" : ""} onClick={() => update("receiptMode", "online-printable")}><FileImage size={22} /><strong>온라인 자료</strong><span>이미지 함께 출력</span></button></div>{draft.receiptMode === "offline-original" && <><label className="original-confirm"><input type="checkbox" checked={draft.originalConfirmed} onChange={(event) => update("originalConfirmed", event.target.checked)} /><Check size={15} /><span>제출할 실물 영수증 원본을 보관 중입니다.</span></label><div className="offline-holder-setup"><div className="offline-holder-heading"><span><strong>실물 부착칸 {offlineHolders.length}개</strong><small>긴 영수증을 잘라 붙일 때 칸을 추가하세요. 각 칸은 영수증철에서 다시 조절할 수 있습니다.</small></span><button type="button" className="button secondary" onClick={addDraftOfflineHolder}><Plus size={15} /> 부착칸 추가</button></div>{offlineHolders.map((holder, index) => <div className="offline-holder-row" key={holder.id}><span className="holder-index">{index + 1}</span><strong>실물 조각 {index + 1}</strong><label><span>너비</span><input type="number" min="32" max="190" value={holder.widthMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { widthMm: Math.min(190, Math.max(32, Number(event.target.value) || 32)) })} /><em>mm</em></label><b>×</b><label><span>높이</span><input type="number" min="20" max="262" value={holder.heightMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { heightMm: Math.min(262, Math.max(20, Number(event.target.value) || 20)) })} /><em>mm</em></label><button type="button" className="icon-button" aria-label={`실물 부착칸 ${index + 1} 삭제`} disabled={offlineHolders.length <= 1} onClick={() => removeDraftOfflineHolder(holder.id)}><Trash2 size={14} /></button></div>)}</div></>}
-      <div className="attachment-box"><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진 또는 PDF"}</strong><small>{project.projectDirectory ? "여러 파일을 선택하거나 클립보드 이미지를 바로 붙여넣으세요." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><span className="paste-shortcut"><ClipboardPaste size={15} /> ⌘V / Ctrl+V</span><button className="button secondary" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 여러 개 선택</button></div>{draft.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><FileImage size={17} /><button type="button" className="attachment-preview-trigger" onClick={() => setPreviewAttachment(attachment)} title="클릭하여 확대 보기">{attachment.originalName}</button><select value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select><button className="text-extract-button" onClick={() => runOcr(attachment)} disabled={ocrProgress !== null}>{ocrProgress !== null ? `${Math.round(ocrProgress * 100)}%` : "텍스트 추출"}</button><button aria-label="첨부파일 삭제" onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><X size={15} /></button></div>)}
-      {ocr && <div className={`ocr-suggestion ${ocr.quality}`}><div className="ocr-suggestion-heading"><Sparkles size={18} /><strong>영수증 이미지에서 텍스트 추출 시도</strong><em>{ocr.provider === "clova" ? "CLOVA" : "오픈소스"}</em></div><div className="ocr-values"><button onClick={() => ocr.date && update("date", ocr.date)} disabled={!ocr.date}><span>날짜 후보</span><strong>{ocr.date || "찾지 못함"}</strong></button><button onClick={() => ocr.amount && update("amount", ocr.amount)} disabled={!ocr.amount}><span>금액 후보</span><strong>{ocr.amount ? money(ocr.amount) : "찾지 못함"}</strong></button><button onClick={() => ocr.merchant && update("content", ocr.merchant)} disabled={!ocr.merchant}><span>상호 후보</span><strong title={ocr.merchant || undefined}>{ocr.merchant || "찾지 못함"}</strong></button></div><small>{ocr.quality === "unreadable" ? "숫자·기호가 섞인 저품질 결과는 표시하지 않았습니다. 더 선명한 원본을 사용하거나 CLOVA OCR을 설정해 주세요." : ocr.quality === "partial" ? "일부 후보만 찾았습니다. 원본과 대조한 뒤 사용할 값만 눌러 주세요." : "후보를 클릭하면 입력란에 반영됩니다. 반드시 영수증 원본과 대조하세요."}</small></div>}
+      <div className="attachment-box"><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진 또는 PDF"}</strong><small>{project.projectDirectory ? "여러 파일을 선택하거나 클립보드 이미지를 바로 붙여넣으세요." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><span className="paste-shortcut"><ClipboardPaste size={15} /> ⌘V / Ctrl+V</span><button className="button secondary" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 여러 개 선택</button></div>{draft.attachments.map((attachment) => <div className="attachment-row" key={attachment.id}><FileImage size={17} /><button type="button" className="attachment-preview-trigger" onClick={() => setPreviewAttachment(attachment)} title="클릭하여 확대 보기">{attachment.originalName}</button><select value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select><button aria-label="첨부파일 삭제" onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><X size={15} /></button></div>)}
     </div>
     <div className="editor-section internal-section"><div className="section-title"><div><span>누가 결제했나요? <em>앱 내부 전용</em></span><small>기본은 팀비입니다. 팀원이 먼저 냈을 때만 이름을 입력하세요.</small></div></div><div className="choice-cards payment"><button className={draft.paymentSource === "team" ? "selected" : ""} onClick={() => update("paymentSource", "team")}><WalletCards size={20} /><span><strong>팀비로 결제</strong><small>별도 정산 없음</small></span></button><button className={draft.paymentSource === "personal" ? "selected" : ""} onClick={() => update("paymentSource", "personal")}><Users size={20} /><span><strong>개인이 먼저 결제</strong><small>나중에 돌려줄 금액</small></span></button></div>{draft.paymentSource === "personal" && <div className="payer-inline"><label className="field"><span>먼저 결제한 사람</span><input list="known-payers" value={payerName} onChange={(event) => { const name = event.target.value; setPayerName(name); const existing = project.people.find((person) => person.name === name); update("payerId", existing?.id); }} placeholder="이름을 바로 입력하세요" /><datalist id="known-payers">{project.people.filter((person) => person.name.trim()).map((person) => <option value={person.name} key={person.id} />)}</datalist><small>{project.people.some((person) => person.name === payerName) ? "기존 정산 대상자를 선택했습니다." : payerName.trim() ? "새 이름은 내역 반영 시 자동 등록됩니다." : "설정에서 미리 추가할 필요가 없습니다."}</small></label><div className="field-grid settlement-fields"><Field label="돌려줄 금액" type="number" value={String(draft.settlementTargetAmount || draft.amount || "")} onChange={(value) => update("settlementTargetAmount", Number(value))} /><Field label="이미 돌려준 금액" type="number" value={String(draft.settledAmount || "")} onChange={(value) => update("settledAmount", Number(value))} /></div></div>}<div className="internal-caption"><BadgeCheck size={15} /> 이름과 정산 정보는 공식 Excel과 영수증철에 표시되지 않습니다.</div></div>
   </div><div className="drawer-footer"><button className="button ghost" onClick={onClose}>취소</button><button className="button accent" onClick={() => onSave(draft, payerName)} disabled={!draft.date || !draft.content.trim() || draft.amount <= 0 || (draft.paymentSource === "personal" && !payerName.trim())}><Check size={17} /> 내역 반영</button></div></div></div>{previewAttachment && <AttachmentPreviewModal project={project} attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />}</>;

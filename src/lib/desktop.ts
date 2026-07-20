@@ -191,31 +191,6 @@ export async function readAttachmentBytes(absolutePath: string) {
   return new Uint8Array(await invoke<number[]>("read_binary_file", { path: absolutePath }));
 }
 
-export interface ClovaStatus {
-  configured: boolean;
-  invokeUrl?: string;
-}
-
-export const getClovaStatus = async (): Promise<ClovaStatus> => {
-  if (!isTauri()) return { configured: false };
-  return invoke("clova_status");
-};
-
-export const saveClovaConfig = async (invokeUrl: string, secret: string) => {
-  if (!isTauri()) throw new Error("설치형 앱에서 설정할 수 있습니다.");
-  return invoke("save_clova_config", { invokeUrl, secret });
-};
-
-export const clearClovaConfig = async () => {
-  if (!isTauri()) return;
-  return invoke("clear_clova_config");
-};
-
-export const runClovaOcr = async (absolutePath: string) => {
-  if (!isTauri()) throw new Error("설치형 앱에서 CLOVA OCR을 사용할 수 있습니다.");
-  return invoke<unknown>("clova_ocr", { filePath: absolutePath });
-};
-
 export const attachmentAbsolutePath = (projectDirectory: string, relativePath: string) =>
   `${projectDirectory}/${relativePath}`;
 

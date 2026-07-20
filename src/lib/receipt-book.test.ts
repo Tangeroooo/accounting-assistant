@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, layoutReceiptBookItems, offlinePlaceholderLabel, resizePictureFrame } from "./receipt-book";
+import { buildReceiptBookItems, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -85,6 +85,19 @@ describe("영수증철 페이지 구성", () => {
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "se", deltaXmm: 20, deltaYmm: 5, cropMode: false })).toEqual({ widthMm: 100, heightMm: 150 });
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "e", deltaXmm: 20, deltaYmm: 0, cropMode: false })).toEqual({ widthMm: 100, heightMm: 150 });
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "e", deltaXmm: -25, deltaYmm: 0, cropMode: true })).toEqual({ widthMm: 55, heightMm: 120 });
+  });
+
+  it("자르기 프레임을 줄여도 원본 그림의 크기와 중심 위치를 유지한다", () => {
+    const layout = { widthMm: 100, heightMm: 70, aspectRatio: 1.5, fit: "cover" as const, scale: 1.2, offsetX: 12, offsetY: -8, rotation: 0 };
+    const before = pictureLayoutGeometry(100, 70, layout);
+    const cropped = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "e", deltaXmm: -20, deltaYmm: 0, layout });
+    const after = pictureLayoutGeometry(cropped.widthMm, cropped.heightMm, { ...layout, ...cropped });
+
+    expect(cropped).toMatchObject({ widthMm: 80, heightMm: 70 });
+    expect(after.contentWidthMm).toBeCloseTo(before.contentWidthMm, 6);
+    expect(after.contentHeightMm).toBeCloseTo(before.contentHeightMm, 6);
+    expect(cropped.offsetX * cropped.widthMm / 100).toBeCloseTo(layout.offsetX * 100 / 100, 6);
+    expect(cropped.offsetY * cropped.heightMm / 100).toBeCloseTo(layout.offsetY * 70 / 100, 6);
   });
 
   it("한 지출에 여러 실물 홀더를 만들고 각 홀더 크기로 자동 배치한다", () => {

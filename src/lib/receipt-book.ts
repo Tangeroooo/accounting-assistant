@@ -172,6 +172,83 @@ export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaY
   };
 }
 
+export interface PictureLayoutGeometry {
+  contentWidthMm: number;
+  contentHeightMm: number;
+  boundsWidthMm: number;
+  boundsHeightMm: number;
+  baseScale: number;
+}
+
+type PictureLayout = Pick<NonNullable<Attachment["layout"]>, "aspectRatio" | "fit" | "scale" | "rotation">;
+
+/**
+ * 브라우저 미리보기와 PDF가 동일한 방식으로 그림을 프레임에 맞추도록
+ * 회전 전 그림 크기와 회전 후 외곽 크기를 계산한다.
+ */
+export function pictureLayoutGeometry(
+  frameWidthMm: number,
+  frameHeightMm: number,
+  layout: PictureLayout,
+): PictureLayoutGeometry {
+  const aspectRatio = clamp(layout.aspectRatio || DEFAULT_IMAGE_LAYOUT.aspectRatio, 0.12, 8);
+  const rotation = ((layout.rotation % 360) + 360) % 360 * Math.PI / 180;
+  const cosine = Math.abs(Math.cos(rotation));
+  const sine = Math.abs(Math.sin(rotation));
+  const sourceWidth = aspectRatio;
+  const sourceHeight = 1;
+  const rotatedWidth = sourceWidth * cosine + sourceHeight * sine;
+  const rotatedHeight = sourceWidth * sine + sourceHeight * cosine;
+  const horizontalScale = frameWidthMm / rotatedWidth;
+  const verticalScale = frameHeightMm / rotatedHeight;
+  const baseScale = layout.fit === "cover"
+    ? Math.max(horizontalScale, verticalScale)
+    : Math.min(horizontalScale, verticalScale);
+  const contentScale = baseScale * layout.scale;
+  return {
+    contentWidthMm: sourceWidth * contentScale,
+    contentHeightMm: sourceHeight * contentScale,
+    boundsWidthMm: rotatedWidth * contentScale,
+    boundsHeightMm: rotatedHeight * contentScale,
+    baseScale,
+  };
+}
+
+/**
+ * Word/Excel의 자르기처럼 프레임만 바꾸고 원본 그림의 실제 크기는 유지한다.
+ * offset은 프레임 중심 기준 백분율이므로 새 프레임 크기에 맞게 환산한다.
+ */
+export function cropPictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm, layout }: {
+  widthMm: number;
+  heightMm: number;
+  handle: string;
+  deltaXmm: number;
+  deltaYmm: number;
+  layout: NonNullable<Attachment["layout"]>;
+}) {
+  const nextFrame = resizePictureFrame({
+    widthMm,
+    heightMm,
+    handle,
+    deltaXmm,
+    deltaYmm,
+    cropMode: true,
+  });
+  const currentGeometry = pictureLayoutGeometry(widthMm, heightMm, layout);
+  const nextBaseGeometry = pictureLayoutGeometry(nextFrame.widthMm, nextFrame.heightMm, { ...layout, scale: 1 });
+  const nextScale = clamp(
+    layout.scale * currentGeometry.baseScale / nextBaseGeometry.baseScale,
+    0.1,
+    12,
+  );
+  return {
+    ...nextFrame,
+    scale: nextScale,
+    offsetX: clamp(layout.offsetX * widthMm / nextFrame.widthMm, -300, 300),
+    offsetY: clamp(layout.offsetY * heightMm / nextFrame.heightMm, -300, 300),
+  };
+}
+
 function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<string, number>) {
   if (item.offlineHolder) {
     return {
