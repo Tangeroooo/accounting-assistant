@@ -8,7 +8,6 @@ import {
   buildReceiptBookItems,
   DEFAULT_IMAGE_LAYOUT,
   layoutReceiptBookItems,
-  offlineHolderDimensionsLabel,
   offlinePlaceholderLabel,
 } from "./receipt-book";
 
@@ -20,6 +19,21 @@ const DPI = 200;
 const PX_PER_MM = DPI / 25.4;
 
 const mm = (value: number) => value * PX_PER_MM;
+
+export interface RenderedReceiptBookObject {
+  canvas: HTMLCanvasElement;
+  xMm: number;
+  yMm: number;
+  widthMm: number;
+  heightMm: number;
+  name: string;
+  description: string;
+}
+
+export interface RenderedReceiptBookPage {
+  title: string;
+  objects: RenderedReceiptBookObject[];
+}
 
 function createPageCanvas() {
   const canvas = document.createElement("canvas");
@@ -112,7 +126,6 @@ function drawOfflinePlaceholder(
   context: CanvasRenderingContext2D,
   bounds: { x: number; y: number; width: number; height: number },
   label: string,
-  dimensionsLabel: string,
 ) {
   const width = mm(32);
   const height = mm(17);
@@ -132,13 +145,17 @@ function drawOfflinePlaceholder(
   context.fillStyle = "#7c8592";
   context.font = `500 ${Math.round(mm(1.55))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
   context.fillText("실물을 중앙에 붙이세요", x + width / 2, y + mm(11), width - mm(2));
-  context.fillStyle = "#64748b55";
-  context.font = `800 ${Math.round(mm(2.7))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
-  context.fillText(dimensionsLabel, bounds.x + bounds.width / 2, bounds.y + bounds.height * 0.86, bounds.width * 0.88);
   context.restore();
 }
 
-export async function renderReceiptBookPageCanvases(project: ProjectData) {
+function createObjectCanvas(widthMm: number, heightMm: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(mm(widthMm)));
+  canvas.height = Math.max(1, Math.round(mm(heightMm)));
+  return canvas;
+}
+
+export async function renderReceiptBookObjectPages(project: ProjectData): Promise<RenderedReceiptBookPage[]> {
   const items = buildReceiptBookItems(project);
   const renderedAttachments = new Map<string, HTMLCanvasElement>();
   const measuredAspectRatios = new Map<string, number>();
@@ -150,27 +167,49 @@ export async function renderReceiptBookPageCanvases(project: ProjectData) {
   }
   const pages = layoutReceiptBookItems(items, measuredAspectRatios);
   if (pages.length === 0) throw new Error("내보낼 영수증이 없습니다.");
+  const title = `${project.meta.community || "○○○"} 공동체 - 국내 ${project.meta.teamName || "○○○팀"} - 영수증철`;
+
+  return pages.map((placements) => ({
+    title,
+    objects: placements.flatMap<RenderedReceiptBookObject>((placement) => {
+      const { item } = placement;
+      const objectCanvas = createObjectCanvas(placement.widthMm, placement.heightMm);
+      const context = objectCanvas.getContext("2d");
+      if (!context) throw new Error("영수증철 개체를 만들 수 없습니다.");
+      const bounds = { x: 0, y: 0, width: objectCanvas.width, height: objectCanvas.height };
+      if (item.offlineHolder) {
+        drawOfflinePlaceholder(context, bounds, offlinePlaceholderLabel(item));
+      } else if (item.attachment) {
+        const rendered = renderedAttachments.get(item.attachment.id);
+        if (!rendered) return [];
+        drawPlacedImage(context, rendered, bounds, item.attachment);
+      } else {
+        return [];
+      }
+      return [{
+        canvas: objectCanvas,
+        xMm: 10 + placement.xMm,
+        yMm: 25 + placement.yMm,
+        widthMm: placement.widthMm,
+        heightMm: placement.heightMm,
+        name: item.attachment?.originalName ?? offlinePlaceholderLabel(item),
+        description: item.attachment?.originalName ?? `${offlinePlaceholderLabel(item)} 실물 영수증 부착 영역`,
+      }];
+    }),
+  }));
+}
+
+export async function renderReceiptBookPageCanvases(project: ProjectData) {
+  const pages = await renderReceiptBookObjectPages(project);
   const pageCanvases: HTMLCanvasElement[] = [];
 
-  for (const placements of pages) {
+  for (const page of pages) {
     const canvas = createPageCanvas();
     const context = canvas.getContext("2d");
     if (!context) throw new Error("영수증철 페이지를 만들 수 없습니다.");
     drawPageHeader(context, project);
-    for (const placement of placements) {
-      const { item } = placement;
-      const bounds = {
-        x: mm(10 + placement.xMm),
-        y: mm(25 + placement.yMm),
-        width: mm(placement.widthMm),
-        height: mm(placement.heightMm),
-      };
-      if (item.offlineHolder) {
-        drawOfflinePlaceholder(context, bounds, offlinePlaceholderLabel(item), offlineHolderDimensionsLabel(item.offlineHolder));
-      } else if (item.attachment) {
-        const rendered = renderedAttachments.get(item.attachment.id);
-        if (rendered) drawPlacedImage(context, rendered, bounds, item.attachment);
-      }
+    for (const object of page.objects) {
+      context.drawImage(object.canvas, mm(object.xMm), mm(object.yMm), mm(object.widthMm), mm(object.heightMm));
     }
     pageCanvases.push(canvas);
   }

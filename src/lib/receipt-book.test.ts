@@ -188,6 +188,28 @@ describe("영수증철 페이지 구성", () => {
     ]);
   });
 
+  it("여러 열도 열 묶음 전체와 각 열의 개별 항목을 최종 너비 기준으로 가운데 둔다", () => {
+    const project = createEmptyProject();
+    project.expenses = [
+      { ...expense(1), offlineHolders: [{ id: "first-1", widthMm: 60, heightMm: 80 }] },
+      { ...expense(2), offlineHolders: [{ id: "first-2", widthMm: 60, heightMm: 80 }] },
+      { ...expense(3), offlineHolders: [{ id: "first-3", widthMm: 60, heightMm: 80 }] },
+      { ...expense(4), offlineHolders: [{ id: "second-wide", widthMm: 100, heightMm: 80 }] },
+      { ...expense(5), offlineHolders: [{ id: "second-narrow", widthMm: 70, heightMm: 80 }] },
+    ];
+
+    const page = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
+    expect(page.map(({ xMm, widthMm }) => ({ xMm, widthMm }))).toEqual([
+      { xMm: 13, widthMm: 60 },
+      { xMm: 13, widthMm: 60 },
+      { xMm: 13, widthMm: 60 },
+      { xMm: 77, widthMm: 100 },
+      { xMm: 92, widthMm: 70 },
+    ]);
+    expect(Math.min(...page.map((placement) => placement.xMm))).toBe(13);
+    expect(Math.max(...page.map((placement) => placement.xMm + placement.widthMm))).toBe(177);
+  });
+
   it("한 지출에 여러 실물 홀더를 만들고 각 홀더 크기로 자동 배치한다", () => {
     const project = createEmptyProject();
     project.expenses = [{

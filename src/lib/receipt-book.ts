@@ -341,19 +341,22 @@ export function layoutReceiptBookItems(
       columnX,
       Math.max(...page.filter((placement) => placement.xMm === columnX).map((placement) => placement.widthMm)),
     ]));
+    const naturalLeftMm = Math.min(...columnPositions);
+    const naturalRightMm = Math.max(...columnPositions.map((columnX) => columnX + (columnWidths.get(columnX) ?? 0)));
+    const pageContentWidthMm = naturalRightMm - naturalLeftMm;
+    const pageCenterOffsetMm = (RECEIPT_FLOW_WIDTH_MM - pageContentWidthMm) / 2 - naturalLeftMm;
     pages.push(page.map((placement) => {
       const layout = placement.item.attachment
         ? { ...DEFAULT_IMAGE_LAYOUT, ...placement.item.attachment.layout }
         : undefined;
-      const centeredItemOffset = pageColumnCount === 1
-        ? (RECEIPT_FLOW_WIDTH_MM - placement.widthMm) / 2
-        : 0;
+      const currentColumnWidthMm = columnWidths.get(placement.xMm) ?? placement.widthMm;
+      const centeredItemOffsetMm = (currentColumnWidthMm - placement.widthMm) / 2;
       return {
         ...placement,
-        xMm: placement.xMm + centeredItemOffset + (layout?.frameOffsetXMm ?? 0),
+        xMm: placement.xMm + pageCenterOffsetMm + centeredItemOffsetMm + (layout?.frameOffsetXMm ?? 0),
         yMm: placement.yMm + (layout?.frameOffsetYMm ?? 0),
         pageColumnCount,
-        columnWidthMm: columnWidths.get(placement.xMm) ?? placement.widthMm,
+        columnWidthMm: currentColumnWidthMm,
       };
     }));
     page = [];
