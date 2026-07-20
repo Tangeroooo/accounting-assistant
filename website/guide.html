@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="회계가 처음인 팀 회계를 위한 바른장부 사용 가이드. 출발 전 준비부터 수입·지출 입력, 영수증철, 정산, 제출까지 순서대로 안내합니다." />
+    <meta name="theme-color" content="#17243e" />
+    <meta property="og:title" content="바른장부 처음 사용 가이드" />
+    <meta property="og:description" content="출발 전 준비부터 최종 제출까지, 팀 회계 업무를 순서대로 따라 하세요." />
+    <meta property="og:type" content="article" />
+    <meta property="og:image" content="https://tangeroooo.github.io/accounting-assistant/assets/app-accounting.png" />
+    <title>처음 사용 가이드 — 바른장부</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./guide.css" />
+    <script src="./guide.js" defer></script>
+  </head>
+  <body class="guide-body">
+    <header class="site-header guide-header">
+      <a class="brand" href="./index.html" aria-label="바른장부 다운로드 홈페이지">
+        <span class="brand-mark guide-brand-mark" aria-hidden="true">✓</span>
+        <span><strong>바른장부</strong><small>아웃리치 회계 도우미</small></span>
+      </a>
+      <nav aria-label="가이드 메뉴">
+        <a href="#roadmap">전체 흐름</a>
+        <a href="#evidence">증빙 기준</a>
+        <a href="#final-check">제출 점검</a>
+        <a class="nav-download" href="./index.html#download">앱 다운로드</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="guide-hero">
+        <div class="section-shell guide-hero-layout">
+          <div class="guide-hero-copy">
+            <span class="eyebrow"><i></i> FIRST-TIME ACCOUNTANT GUIDE</span>
+            <h1>처음 맡은 회계도,<br /><em>이 순서대로면 됩니다.</em></h1>
+            <p>교육자료의 핵심 원칙을 바른장부 화면 순서로 다시 정리했습니다. 출발 전 영수증 준비부터 Excel·영수증철 제출까지 하나씩 체크하세요.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="#start">첫 단계부터 시작</a>
+              <a class="button secondary" href="#quick-rules">핵심 원칙 먼저 보기</a>
+            </div>
+          </div>
+          <aside class="guide-progress-card" aria-label="가이드 진행률">
+            <span>나의 준비도</span>
+            <strong><b data-progress-value>0</b>%</strong>
+            <div class="guide-progress-track"><i data-progress-bar></i></div>
+            <p><b data-progress-count>0</b> / <span data-progress-total>0</span>개 확인</p>
+            <button type="button" data-reset-checklist>체크 초기화</button>
+          </aside>
+        </div>
+      </section>
+
+      <section class="guide-alert-strip">
+        <div class="section-shell">
+          <strong>가장 중요한 한 문장</strong>
+          <p>오프라인 결제는 실물 영수증 원본을 잃어버리지 말고, 최종 보고서에서 <b>총수입 = 총지출 + 환입액</b>이 되게 맞춥니다.</p>
+        </div>
+      </section>
+
+      <section class="guide-section section-shell" id="roadmap">
+        <div class="guide-section-heading centered">
+          <span class="eyebrow">ONE CLEAR ROADMAP</span>
+          <h2>전체 업무는 8단계입니다</h2>
+          <p>앱 메뉴도 이 흐름을 따라갑니다. 막히면 현재 단계로 돌아오세요.</p>
+        </div>
+        <ol class="roadmap-grid">
+          <li><a href="#start"><span>0</span><b>출발 전 준비</b><small>계좌·카드·영수증 습관</small></a></li>
+          <li><a href="#project"><span>1</span><b>프로젝트 만들기</b><small>기본 정보와 저장 위치</small></a></li>
+          <li><a href="#income"><span>2</span><b>수입 입력</b><small>회비·지원금·플로잉</small></a></li>
+          <li><a href="#expense"><span>3</span><b>지출 등록</b><small>영수증 1개씩 입력</small></a></li>
+          <li><a href="#review"><span>4</span><b>검산·자동 검토</b><small>차액과 누락 확인</small></a></li>
+          <li><a href="#receipt-book"><span>5</span><b>영수증철 편집</b><small>크기·자르기·배치</small></a></li>
+          <li><a href="#settlement"><span>6</span><b>개인 정산</b><small>먼저 낸 사람에게 지급</small></a></li>
+          <li><a href="#final-check"><span>7</span><b>산출물·제출</b><small>검수 후 출력·서명</small></a></li>
+        </ol>
+      </section>
+
+      <div class="guide-content section-shell">
+        <aside class="guide-toc" aria-label="가이드 목차">
+          <strong>처음부터 따라가기</strong>
+          <a href="#start"><span>0</span>출발 전 준비</a>
+          <a href="#project"><span>1</span>프로젝트 만들기</a>
+          <a href="#income"><span>2</span>수입 입력</a>
+          <a href="#expense"><span>3</span>지출 등록</a>
+          <a href="#review"><span>4</span>검산·자동 검토</a>
+          <a href="#receipt-book"><span>5</span>영수증철 편집</a>
+          <a href="#settlement"><span>6</span>개인 정산</a>
+          <a href="#final-check"><span>7</span>산출물·제출</a>
+          <hr />
+          <a href="#categories">항목 분류표</a>
+          <a href="#evidence">증빙 빠른 찾기</a>
+          <a href="#quick-rules">7가지 원칙</a>
+        </aside>
+
+        <div class="guide-main">
+          <section class="guide-step" id="start">
+            <header><span class="step-number">0</span><div><small>BEFORE DEPARTURE</small><h2>출발 전에 회계 환경부터 준비하세요</h2><p>영수증은 나중에 다시 만들기 어렵습니다. 현장에 가기 전에 팀 전체가 같은 규칙을 알아야 합니다.</p></div></header>
+            <div class="do-first-grid">
+              <article><span>01</span><h3>관리하기 쉬운 계좌</h3><p>명의보다 회계가 입출금을 빠짐없이 확인할 수 있는지가 중요합니다.</p></article>
+              <article><span>02</span><h3>카드는 일시불</h3><p>가능하면 카드로 항목별 분리 결제하고 영수증을 바로 받습니다.</p></article>
+              <article><span>03</span><h3>항목별 영수증 봉투</h3><p>교통비·식비처럼 항목별 지퍼백을 준비하면 분실과 분류 실수가 줄어듭니다.</p></article>
+            </div>
+            <div class="check-panel">
+              <h3>출발 전 체크</h3>
+              <label><input type="checkbox" data-guide-check="pre-account" /><span>회비 입금과 팀별사역지원금 입금을 확인했습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="pre-card" /><span>결제 담당자에게 카드 일시불과 영수증 수령 원칙을 알렸습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="pre-envelope" /><span>영수증을 항목별로 보관할 봉투나 지퍼백을 준비했습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="pre-separate" /><span>서로 다른 항목의 물품은 가능한 한 따로 결제하기로 했습니다.</span></label>
+            </div>
+            <div class="warning-box"><b>회비로 처리하면 안 되는 대표 사례</b><p>사전 MT 비용·간식, 애프터·뒤풀이·후속모임 식비, 개인에게 남은 회비를 나누어 돌려주는 일은 금지됩니다. 사전답사 교통비·식비와 출발/도착 중 휴게소 식사는 가능합니다.</p></div>
+          </section>
+
+          <section class="guide-step" id="project">
+            <header><span class="step-number">1</span><div><small>CREATE A PROJECT</small><h2>.barun 프로젝트부터 만드세요</h2><p>한 프로젝트가 회계 입력과 모든 영수증 이미지를 함께 보관합니다.</p></div></header>
+            <div class="screen-guide">
+              <img src="./assets/app-overview.png" alt="바른장부 진행 현황 화면" />
+              <div>
+                <ol class="numbered-actions">
+                  <li><span>1</span><div><b>새 프로젝트</b><p>공동체, 팀 이름, 사역지, 인원, 출발일과 도착일을 입력합니다.</p></div></li>
+                  <li><span>2</span><div><b>저장 위치 선택</b><p>문서나 백업되는 폴더에 파일 이름과 위치를 정합니다.</p></div></li>
+                  <li><span>3</span><div><b>회계 입력 시작</b><p>이후 입력과 첨부 이미지는 선택한 파일에 자동 저장됩니다.</p></div></li>
+                </ol>
+              </div>
+            </div>
+            <div class="info-box"><b>.barun 파일이 중요한 이유</b><p>프로젝트에는 입력 내용뿐 아니라 영수증·공통 주유비 증빙 이미지와 영수증철 편집값까지 포함됩니다. 다른 컴퓨터에서는 이 파일 하나를 옮겨 열면 됩니다.</p></div>
+            <div class="check-panel inline-checks">
+              <label><input type="checkbox" data-guide-check="project-info" /><span>공동체·팀명·사역 기간·인원을 정확히 입력했습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="project-saved" /><span>.barun 파일을 찾기 쉬운 위치에 만들었습니다.</span></label>
+            </div>
+          </section>
+
+          <section class="guide-step" id="income">
+            <header><span class="step-number">2</span><div><small>ENTER INCOME</small><h2>수입을 먼저 입력하세요</h2><p>회계 입력·검토 화면 맨 위에서 사용할 수 있는 전체 재정을 만듭니다.</p></div></header>
+            <div class="formula-card">
+              <div><small>팀 회비</small><strong>1인당 회비 × 우리 팀 인원</strong></div>
+              <i>＋</i>
+              <div><small>교회 지원</small><strong>팀별사역지원금</strong></div>
+              <i>＋</i>
+              <div><small>추가 재정</small><strong>재정 플로잉</strong></div>
+              <i>＝</i>
+              <div class="formula-result"><small>총수입</small><strong>사용 가능한 재정</strong></div>
+            </div>
+            <ul class="guide-list">
+              <li><b>인원</b>에는 현지 교회 인원이 아닌 실제로 떠난 우리 팀 인원만 적습니다.</li>
+              <li><b>물품으로 받은 플로잉</b>은 재정이 아니므로 수입과 지출에 넣지 않습니다.</li>
+              <li><b>펀드레이징</b>은 재료비를 따로 적기보다 순수익을 재정 플로잉으로 기록합니다.</li>
+            </ul>
+            <div class="check-panel inline-checks">
+              <label><input type="checkbox" data-guide-check="income-dues" /><span>회비 단가와 실제 팀 인원을 입력했습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="income-support" /><span>팀별사역지원금과 재정 플로잉 입금액을 확인했습니다.</span></label>
+            </div>
+          </section>
+
+          <section class="guide-step" id="expense">
+            <header><span class="step-number">3</span><div><small>ONE RECEIPT AT A TIME</small><h2>영수증을 보면서 지출을 한 건씩 등록하세요</h2><p>금전출납부의 기본 원칙은 영수증 1개당 지출 1줄입니다.</p></div></header>
+            <div class="screen-guide reverse">
+              <img src="./assets/app-accounting.png" alt="수입, 지출, 자동 검토가 함께 보이는 회계 입력 화면" />
+              <div>
+                <ol class="numbered-actions">
+                  <li><span>1</span><div><b>표의 + 또는 지출 등록</b><p>이미 등록한 행을 누르면 같은 편집 화면이 열립니다.</p></div></li>
+                  <li><span>2</span><div><b>영수증과 나란히 입력</b><p>첨부 이미지를 왼쪽에서 확대해 날짜·상호·금액을 확인합니다.</p></div></li>
+                  <li><span>3</span><div><b>증빙 형태 선택</b><p>실물 원본인지, 파일로 출력할 온라인 자료인지 구분합니다.</p></div></li>
+                </ol>
+              </div>
+            </div>
+            <div class="field-explainer">
+              <article><span>내용</span><h3>무엇을 왜 샀는지</h3><p>금전출납부의 대표 설명입니다.</p><code>[식대간식비] 첫날 저녁 식사</code></article>
+              <article><span>세부 품목</span><h3>영수증에 찍힌 상세 내역</h3><p>품목·수량·대상 등 검수에 필요한 정보입니다.</p><code>29명 · 김밥 29줄 · 생수 2박스</code></article>
+            </div>
+            <div class="tip-box"><b>결제자가 팀원이면?</b><p>‘개인이 먼저 결제’를 선택하고 이름을 바로 적으세요. 미리 정산 대상자를 만들 필요가 없으며 이름은 공식 Excel이나 영수증철에 출력되지 않습니다.</p></div>
+            <div class="check-panel">
+              <h3>지출 한 건을 저장하기 전</h3>
+              <label><input type="checkbox" data-guide-check="expense-core" /><span>항목·날짜·내용·금액이 영수증과 같습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="expense-details" /><span>식비 인원 또는 필요한 상세 품목·목적을 적었습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="expense-proof" /><span>실물 원본 보유 또는 온라인 증빙 파일을 확인했습니다.</span></label>
+            </div>
+          </section>
+
+          <section class="guide-reference" id="categories">
+            <div class="guide-section-heading"><span class="eyebrow">CATEGORY QUICK FINDER</span><h2>어느 항목에 넣을까요?</h2><p>앱은 아래 8개 항목 순서로 묶고 같은 항목 안에서는 날짜순으로 정렬합니다.</p></div>
+            <div class="category-table-wrap">
+              <table class="category-table">
+                <thead><tr><th>항목</th><th>포함되는 지출</th><th>특히 확인할 점</th></tr></thead>
+                <tbody>
+                  <tr><td><span>1</span><b>교통비</b></td><td>항공권, 렌터카, 통행료, 주유비, 주차비, 버스·지하철</td><td>자차 주유는 산정 증빙과 실물 주유 영수증이 모두 필요</td></tr>
+                  <tr><td><span>2</span><b>숙박비</b></td><td>현지 숙박, 시설·교회 숙박</td><td>영수증이 어렵다면 현금 영수증 양식에 상세 정보와 서명</td></tr>
+                  <tr><td><span>3</span><b>식대간식비</b></td><td>팀원 식사, 간식, 음료</td><td>먹은 인원을 반드시 입력하고 일회용품은 잡비로 분리</td></tr>
+                  <tr><td><span>4</span><b>사역비</b></td><td>전도물품, 마을잔치, 프로그램 재료, 사역 중 식사</td><td>사역과 직접 연결된 목적을 내용에 명확히 기재</td></tr>
+                  <tr><td><span>5</span><b>선물구입비</b></td><td>목회자·성도·전도대상자 선물</td><td>선물 대상과 목적, 상세 품목을 충분히 기재</td></tr>
+                  <tr><td><span>6</span><b>팀별사역비</b></td><td>팀별사역지원금으로 처리하는 사역 목적 지출</td><td>목회자 가정 선물 제외, 인정 가능한 증빙 필요</td></tr>
+                  <tr><td><span>7</span><b>헌금</b></td><td>공식 헌금</td><td>현금 영수증 양식에 영수내용·주소·연락처·성명·서명</td></tr>
+                  <tr><td><span>8</span><b>잡비</b></td><td>배송비, 상비약, 공간대여, 보험, 입장료, 수수료</td><td>여행자보험은 결제 증빙과 가입증명서를 함께 제출</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="guide-reference" id="evidence">
+            <div class="guide-section-heading"><span class="eyebrow">EVIDENCE GUIDE</span><h2>결제 방식에 맞는 증빙을 준비하세요</h2><p>카드매출전표 하나만으로 품목이 보이지 않으면 상세 거래자료가 더 필요합니다.</p></div>
+            <div class="evidence-grid">
+              <article><span class="evidence-type offline">실물</span><h3>오프라인 카드·현금 구매</h3><p>실물 카드영수증 또는 현금영수증 원본을 보관합니다. 앱에서는 ‘오프라인 실물’을 선택하고 필요한 부착칸 수를 만듭니다.</p><b>최종 출력 후 원본을 부착</b></article>
+              <article><span class="evidence-type online">온라인</span><h3>온라인·쿠팡·네이버</h3><p>카드사 매출전표와 거래명세서 또는 주문상세정보를 함께 첨부합니다. 파일 선택이나 ‘클립보드’ 버튼 후 ⌘V/Ctrl+V로 넣을 수 있습니다.</p><b>날짜·상호·품목·총금액 확인</b></article>
+              <article><span class="evidence-type fuel">주유</span><h3>자차 주유비</h3><p>네이버 지도 등 거리·유류비 산정 화면과 실물 주유 영수증이 모두 필요합니다. 공통 산정 증빙은 지출마다 붙이지 않고 여러 장을 한 번 등록합니다.</p><b>교통비 영수증철 맨 앞에 배치</b></article>
+              <article><span class="evidence-type insurance">보험</span><h3>여행자보험</h3><p>카드매출전표 또는 계좌이체증에 보험가입증명서를 더합니다. 보험증권은 한 페이지 전체가 보이게 준비합니다.</p><b>결제 증빙 + 가입증명서</b></article>
+              <article><span class="evidence-type cash">현금 양식</span><h3>헌금·일부 숙박비</h3><p>일반 영수증을 받기 어렵다면 제공된 현금 영수증 양식에 영수내용, 주소, 연락처, 성명과 서명을 자세히 적습니다.</p><b>출발 전에 양식을 출력</b></article>
+              <article><span class="evidence-type tax">기타</span><h3>버스·대중교통·세금계산서</h3><p>세금계산서, 티켓과 카드전표, 카드매출전표와 견적서처럼 거래 내용을 확인할 수 있는 조합을 준비합니다.</p><b>영수증이 어려운 업체는 피하기</b></article>
+            </div>
+            <div class="warning-box"><b>긴 실물 영수증</b><p>원칙적으로 접거나 잘라 내용이 사라지면 안 됩니다. 너무 길어 A4에 들어가지 않을 때만 필요한 조각 수만큼 오프라인 부착칸을 추가하고, 내용을 빠뜨리지 않게 이어 붙이세요.</p></div>
+          </section>
+
+          <section class="guide-step" id="review">
+            <header><span class="step-number">4</span><div><small>RECONCILE AS YOU GO</small><h2>지출을 입력하면서 차액을 바로 확인하세요</h2><p>자동 검토는 같은 종류의 누락을 모아 보여주므로 경고 제목과 대상 영수증 번호를 함께 봅니다.</p></div></header>
+            <div class="reconcile-explanation">
+              <div><span>총수입</span><b>회비 + 지원금 + 플로잉</b></div><i>−</i><div><span>총지출</span><b>8개 항목 지출 합계</b></div><i>−</i><div><span>환입액</span><b>남은 지원금</b></div><i>＝</i><div class="balanced"><span>차액</span><b>0원</b></div>
+            </div>
+            <div class="two-column-notes">
+              <article><h3>팀별사역지원금이 남으면</h3><p><code>환입액 = 지원금 - 팀별사역비</code>이며 최소 0원입니다. 남은 지원금은 교회로 환입합니다.</p></article>
+              <article><h3>지원금보다 더 쓰면</h3><p>초과분은 자동으로 팀 회비 충당으로 계산됩니다. 팀별사역비 첫 행 비고의 자동 문구는 직접 수정할 수도 있습니다.</p></article>
+            </div>
+            <div class="check-panel inline-checks">
+              <label><input type="checkbox" data-guide-check="review-zero" /><span>실시간 검산 차액이 0원입니다.</span></label>
+              <label><input type="checkbox" data-guide-check="review-issues" /><span>자동 검토의 오류와 주의 항목을 모두 확인했습니다.</span></label>
+            </div>
+          </section>
+
+          <section class="guide-step" id="receipt-book">
+            <header><span class="step-number">5</span><div><small>EDIT THE RECEIPT BOOK</small><h2>영수증철을 실제 A4처럼 편집하세요</h2><p>항목이 바뀌면 새 페이지에서 시작하고, 각 페이지 안에서는 최종 크기를 기준으로 가운데에 흐름 배치됩니다.</p></div></header>
+            <div class="screen-guide">
+              <img src="./assets/app-receipts.png" alt="영수증 이미지와 실물 부착칸이 배치된 영수증철 편집 화면" />
+              <div>
+                <ol class="numbered-actions">
+                  <li><span>1</span><div><b>그림 선택</b><p>모서리·변 핸들로 크기를 조절하면 다음 그림이 자동으로 이어집니다.</p></div></li>
+                  <li><span>2</span><div><b>자르기</b><p>자르기 모드에서 프레임 핸들과 그림 드래그로 보이는 영역을 맞춥니다.</p></div></li>
+                  <li><span>3</span><div><b>미리보기</b><p>PDF 또는 Word로 실제 저장될 페이지를 확인한 뒤 내보냅니다.</p></div></li>
+                </ol>
+              </div>
+            </div>
+            <ul class="guide-list receipt-rules">
+              <li><b>편집용 큰 라벨·cm 표시는</b> PDF·Word에 포함되지 않습니다.</li>
+              <li><b>실물 부착칸의 지출 라벨은</b> 출력물에도 남아 어느 영수증을 붙일지 알려줍니다.</li>
+              <li><b>오프라인 원본은</b> 검수 완료 후 출력한 부착칸 중앙에 붙입니다.</li>
+              <li><b>날짜·금액 노란색 표시와 번호 쓰기는</b> 최종 컨펌 후 직접 합니다.</li>
+              <li><b>영수증은</b> 겹치거나 A4 밖으로 나오지 않고, 식별 가능한 크기여야 합니다.</li>
+            </ul>
+            <div class="check-panel inline-checks">
+              <label><input type="checkbox" data-guide-check="book-layout" /><span>모든 그림과 부착칸이 겹치거나 페이지 밖으로 나가지 않습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="book-preview" /><span>PDF 또는 Word 미리보기에서 페이지를 확인했습니다.</span></label>
+            </div>
+          </section>
+
+          <section class="guide-step" id="settlement">
+            <header><span class="step-number">6</span><div><small>INTERNAL SETTLEMENT</small><h2>개인 선결제 금액을 사람별로 정산하세요</h2><p>누가 먼저 냈는지는 편의를 위한 내부 정보이며 공식 금전출납부와 영수증철에는 나타나지 않습니다.</p></div></header>
+            <ol class="horizontal-flow">
+              <li><span>1</span><b>지출에서 개인 선결제 선택</b></li>
+              <li><span>2</span><b>결제자 이름 입력</b></li>
+              <li><span>3</span><b>정산 확인에서 사람별 합계 확인</b></li>
+              <li><span>4</span><b>지급 후 전액 정산 처리</b></li>
+            </ol>
+            <div class="check-panel inline-checks">
+              <label><input type="checkbox" data-guide-check="settlement-total" /><span>각 사람의 선결제 합계와 돌려줄 금액을 대조했습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="settlement-done" /><span>실제 지급이 끝난 사람을 정산 완료로 표시했습니다.</span></label>
+            </div>
+          </section>
+
+          <section class="guide-step final-step" id="final-check">
+            <header><span class="step-number">7</span><div><small>EXPORT &amp; SUBMIT</small><h2>산출물을 저장하고 최종 검수를 받으세요</h2><p>검토가 끝나기 전에도 Excel을 저장해 중간 상태를 확인할 수 있습니다. 출력·부착·형광펜·번호 쓰기는 최종 컨펌 후 진행하세요.</p></div></header>
+            <div class="output-cards">
+              <article><span>XLSX</span><h3>회계보고서 Excel</h3><p>공식 템플릿 형식을 보존해 총괄표·회계보고서·금전출납부를 만듭니다.</p></article>
+              <article><span>PDF</span><h3>영수증철 PDF</h3><p>편집한 페이지를 그대로 저장해 검수와 최종 출력에 사용합니다.</p></article>
+              <article><span>DOCX</span><h3>영수증철 Word</h3><p>헤더는 텍스트, 영수증과 부착칸은 개별 그림 개체로 저장됩니다.</p></article>
+            </div>
+            <div class="check-panel final-checklist">
+              <h3>최종 제출 체크리스트</h3>
+              <label><input type="checkbox" data-guide-check="final-ledger" /><span><b>금전출납부</b> 항목·날짜·내용·금액·영수증 번호를 확인했습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="final-equal" /><span><b>금액 일치</b> 총괄표·회계보고서·금전출납부와 총수입·총지출·환입액을 대조했습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="final-original" /><span><b>원본 영수증</b> 실물 원본이 모두 있고, 온라인 상세 증빙도 빠짐없습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="final-order" /><span><b>영수증철 순서</b> 항목별·날짜순이며 번호가 금전출납부와 같습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="final-visible" /><span><b>가독성</b> 날짜·금액·내역이 선명하고 그림이 겹치거나 A4 밖으로 나가지 않습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="final-review" /><span><b>1차 검수</b> 회계 MC·간사 검수와 수정 반영을 마쳤습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="final-highlight" /><span><b>최종 작업</b> 컨펌 후 날짜·금액을 노란색으로 표시하고 금액 옆에 번호를 썼습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="final-sign" /><span><b>서명·원본 제출</b> 출력본에 회계·교역자 서명을 받고 영수증철 원본과 함께 제출합니다.</span></label>
+            </div>
+            <button class="print-guide-button" type="button" onclick="window.print()">최종 체크리스트 인쇄하기</button>
+          </section>
+
+          <section class="guide-reference seven-rules" id="quick-rules">
+            <div class="guide-section-heading centered"><span class="eyebrow">THE SEVEN ESSENTIALS</span><h2>이 7가지만은 꼭 기억하세요</h2></div>
+            <ol>
+              <li><span>1</span><div><b>오프라인은 영수증 원본</b><p>사진은 검수용입니다. 실물 원본을 끝까지 보관하세요.</p></div></li>
+              <li><span>2</span><div><b>총수입 = 총지출 + 환입액</b><p>자동 검산 차액을 반드시 0원으로 맞춥니다.</p></div></li>
+              <li><span>3</span><div><b>번호는 항목별로 1번부터</b><p>교통비 1번, 식비 1번처럼 항목이 바뀌면 다시 시작합니다.</p></div></li>
+              <li><span>4</span><div><b>날짜·금액은 노란색</b><p>최종 검수 후 출력물에서 직접 표시합니다.</p></div></li>
+              <li><span>5</span><div><b>온라인 구매는 상세내역까지</b><p>카드매출전표와 거래명세서·주문상세정보를 함께 냅니다.</p></div></li>
+              <li><span>6</span><div><b>팀별사역지원금은 승인 목적에만</b><p>팀별사역비로 분류하고 목회자 가정 선물에는 쓰지 않습니다.</p></div></li>
+              <li><span>7</span><div><b>사전 MT·뒤풀이는 자비</b><p>아웃리치 회비 사용 가능 범위를 지킵니다.</p></div></li>
+            </ol>
+          </section>
+
+          <section class="guide-help">
+            <span class="eyebrow">READY TO BEGIN</span>
+            <h2>이제 앱에서 첫 프로젝트를 만들어 보세요</h2>
+            <p>가이드는 언제든 다시 열 수 있고, 체크한 항목은 이 브라우저에만 저장됩니다.</p>
+            <div><a class="button light" href="./index.html#download">내 컴퓨터용 다운로드</a><a class="button guide-outline" href="#top">맨 위로</a></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="brand"><span class="brand-mark guide-brand-mark" aria-hidden="true">✓</span><span><strong>바른장부</strong><small>아웃리치 회계 도우미</small></span></div>
+      <p>교육자료의 제출 원칙을 앱 사용 흐름에 맞춰 정리한 안내서</p>
+      <a href="./index.html">다운로드 홈페이지</a>
+      <a href="https://github.com/Tangeroooo/accounting-assistant" target="_blank" rel="noreferrer">GitHub 저장소 ↗</a>
+    </footer>
+  </body>
+</html>
