@@ -58,6 +58,8 @@ export interface Attachment {
     scale: number;
     offsetX: number;
     offsetY: number;
+    frameOffsetXMm?: number;
+    frameOffsetYMm?: number;
     rotation: number;
   };
   kind:

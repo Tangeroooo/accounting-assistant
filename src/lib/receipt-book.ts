@@ -11,6 +11,8 @@ export const DEFAULT_IMAGE_LAYOUT = {
   scale: 1,
   offsetX: 0,
   offsetY: 0,
+  frameOffsetXMm: 0,
+  frameOffsetYMm: 0,
   rotation: 0,
 } as const;
 
@@ -29,6 +31,8 @@ export interface ReceiptFlowPlacement {
   yMm: number;
   widthMm: number;
   heightMm: number;
+  pageColumnCount?: number;
+  columnWidthMm?: number;
 }
 
 export const DEFAULT_OFFLINE_HOLDER = {
@@ -241,12 +245,27 @@ export function cropPictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm
     0.1,
     12,
   );
+  const frameShiftX = handle.includes("w") ? widthMm - nextFrame.widthMm : 0;
+  const frameShiftY = handle.includes("n") ? heightMm - nextFrame.heightMm : 0;
+  const oldImageCenterX = widthMm / 2 + widthMm * layout.offsetX / 100;
+  const oldImageCenterY = heightMm / 2 + heightMm * layout.offsetY / 100;
   return {
     ...nextFrame,
     scale: nextScale,
-    offsetX: clamp(layout.offsetX * widthMm / nextFrame.widthMm, -300, 300),
-    offsetY: clamp(layout.offsetY * heightMm / nextFrame.heightMm, -300, 300),
+    offsetX: clamp((oldImageCenterX - frameShiftX - nextFrame.widthMm / 2) / nextFrame.widthMm * 100, -300, 300),
+    offsetY: clamp((oldImageCenterY - frameShiftY - nextFrame.heightMm / 2) / nextFrame.heightMm * 100, -300, 300),
+    frameOffsetXMm: (layout.frameOffsetXMm ?? 0) + frameShiftX,
+    frameOffsetYMm: (layout.frameOffsetYMm ?? 0) + frameShiftY,
   };
+}
+
+export function centeredColumnResizeOffset(
+  currentColumnWidthMm: number,
+  nextFrameWidthMm: number,
+  otherColumnMaxWidthMm: number,
+) {
+  const nextColumnWidthMm = Math.max(otherColumnMaxWidthMm, nextFrameWidthMm);
+  return (nextColumnWidthMm - currentColumnWidthMm) / 2;
 }
 
 function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<string, number>) {
@@ -289,12 +308,37 @@ export function layoutReceiptBookItems(
   let columnWidthMm = 0;
   let currentCategory = items[0]?.expense.category;
 
+  const commitPage = () => {
+    if (page.length === 0) return;
+    const columnPositions = [...new Set(page.map((placement) => placement.xMm))];
+    const pageColumnCount = columnPositions.length;
+    const columnWidths = new Map(columnPositions.map((columnX) => [
+      columnX,
+      Math.max(...page.filter((placement) => placement.xMm === columnX).map((placement) => placement.widthMm)),
+    ]));
+    const centeredColumnOffset = pageColumnCount === 1
+      ? (RECEIPT_FLOW_WIDTH_MM - (columnWidths.get(columnPositions[0]) ?? 0)) / 2
+      : 0;
+    pages.push(page.map((placement) => {
+      const layout = placement.item.attachment
+        ? { ...DEFAULT_IMAGE_LAYOUT, ...placement.item.attachment.layout }
+        : undefined;
+      return {
+        ...placement,
+        xMm: placement.xMm + centeredColumnOffset + (layout?.frameOffsetXMm ?? 0),
+        yMm: placement.yMm + (layout?.frameOffsetYMm ?? 0),
+        pageColumnCount,
+        columnWidthMm: columnWidths.get(placement.xMm) ?? placement.widthMm,
+      };
+    }));
+    page = [];
+    xMm = 0;
+  };
+
   const flushColumn = () => {
     if (column.length === 0) return;
     if (page.length > 0 && xMm + columnWidthMm > RECEIPT_FLOW_WIDTH_MM + 0.001) {
-      pages.push(page);
-      page = [];
-      xMm = 0;
+      commitPage();
     }
     let yMm = 0;
     for (const entry of column) {
@@ -310,9 +354,7 @@ export function layoutReceiptBookItems(
   for (const item of items) {
     if (currentCategory && item.expense.category !== currentCategory) {
       flushColumn();
-      if (page.length > 0) pages.push(page);
-      page = [];
-      xMm = 0;
+      commitPage();
       currentCategory = item.expense.category;
     }
     const dimensions = dimensionsForItem(item, measuredAspectRatios);
@@ -325,6 +367,6 @@ export function layoutReceiptBookItems(
     columnWidthMm = Math.max(columnWidthMm, dimensions.widthMm);
   }
   flushColumn();
-  if (page.length > 0) pages.push(page);
+  commitPage();
   return pages;
 }

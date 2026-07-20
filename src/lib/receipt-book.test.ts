@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame } from "./receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, layoutReceiptBookItems, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -50,17 +50,17 @@ describe("영수증철 페이지 구성", () => {
     }));
     const before = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
     expect(before.map(({ xMm, yMm }) => ({ xMm, yMm }))).toEqual([
-      { xMm: 0, yMm: 0 },
-      { xMm: 0, yMm: 84 },
-      { xMm: 0, yMm: 168 },
+      { xMm: 60, yMm: 0 },
+      { xMm: 60, yMm: 84 },
+      { xMm: 60, yMm: 168 },
     ]);
 
     project.expenses[0].attachments[0].layout!.heightMm = 40;
     const after = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
     expect(after.map(({ xMm, yMm }) => ({ xMm, yMm }))).toEqual([
-      { xMm: 0, yMm: 0 },
-      { xMm: 0, yMm: 44 },
-      { xMm: 0, yMm: 128 },
+      { xMm: 60, yMm: 0 },
+      { xMm: 60, yMm: 44 },
+      { xMm: 60, yMm: 128 },
     ]);
   });
 
@@ -87,7 +87,7 @@ describe("영수증철 페이지 구성", () => {
     expect(resizePictureFrame({ widthMm: 80, heightMm: 120, handle: "e", deltaXmm: -25, deltaYmm: 0, cropMode: true })).toEqual({ widthMm: 55, heightMm: 120 });
   });
 
-  it("자르기 프레임을 줄여도 원본 그림의 크기와 중심 위치를 유지한다", () => {
+  it("자르기 프레임을 줄여도 원본 그림의 크기와 절대 중심 위치를 유지한다", () => {
     const layout = { widthMm: 100, heightMm: 70, aspectRatio: 1.5, fit: "cover" as const, scale: 1.2, offsetX: 12, offsetY: -8, rotation: 0 };
     const before = pictureLayoutGeometry(100, 70, layout);
     const cropped = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "e", deltaXmm: -20, deltaYmm: 0, layout });
@@ -96,8 +96,64 @@ describe("영수증철 페이지 구성", () => {
     expect(cropped).toMatchObject({ widthMm: 80, heightMm: 70 });
     expect(after.contentWidthMm).toBeCloseTo(before.contentWidthMm, 6);
     expect(after.contentHeightMm).toBeCloseTo(before.contentHeightMm, 6);
-    expect(cropped.offsetX * cropped.widthMm / 100).toBeCloseTo(layout.offsetX * 100 / 100, 6);
-    expect(cropped.offsetY * cropped.heightMm / 100).toBeCloseTo(layout.offsetY * 70 / 100, 6);
+    expect(cropped.frameOffsetXMm + cropped.widthMm / 2 + cropped.offsetX * cropped.widthMm / 100)
+      .toBeCloseTo(100 / 2 + layout.offsetX * 100 / 100, 6);
+    expect(cropped.frameOffsetYMm + cropped.heightMm / 2 + cropped.offsetY * cropped.heightMm / 100)
+      .toBeCloseTo(70 / 2 + layout.offsetY * 70 / 100, 6);
+  });
+
+  it("자르기 핸들의 반대편 프레임 모서리를 고정한다", () => {
+    const layout = { widthMm: 100, heightMm: 70, aspectRatio: 1.5, fit: "cover" as const, scale: 1, offsetX: 0, offsetY: 0, rotation: 0 };
+    const east = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "e", deltaXmm: -20, deltaYmm: 0, layout });
+    const west = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "w", deltaXmm: 20, deltaYmm: 0, layout });
+    const south = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "s", deltaXmm: 0, deltaYmm: -15, layout });
+    const north = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "n", deltaXmm: 0, deltaYmm: 15, layout });
+
+    expect(east.frameOffsetXMm).toBe(0);
+    expect(east.frameOffsetXMm + east.widthMm).toBe(80);
+    expect(west.frameOffsetXMm).toBe(20);
+    expect(west.frameOffsetXMm + west.widthMm).toBe(100);
+    expect(south.frameOffsetYMm).toBe(0);
+    expect(south.frameOffsetYMm + south.heightMm).toBe(55);
+    expect(north.frameOffsetYMm).toBe(15);
+    expect(north.frameOffsetYMm + north.heightMm).toBe(70);
+  });
+
+  it("가운데 정렬된 한 열에서도 자르기 반대편 모서리가 움직이지 않는다", () => {
+    const project = createEmptyProject();
+    const baseLayout = { widthMm: 100, heightMm: 70, aspectRatio: 1.5, fit: "cover" as const, scale: 1, offsetX: 0, offsetY: 0, rotation: 0 };
+    project.expenses = [{
+      ...expense(1),
+      receiptMode: "online-printable",
+      attachments: [{ id: "center-crop", relativePath: "attachments/crop.png", originalName: "crop.png", mimeType: "image/png", kind: "online-receipt", layout: baseLayout }],
+    }];
+    const before = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
+
+    const east = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "e", deltaXmm: -20, deltaYmm: 0, layout: baseLayout });
+    east.frameOffsetXMm += centeredColumnResizeOffset(100, east.widthMm, 0);
+    project.expenses[0].attachments[0].layout = { ...baseLayout, ...east };
+    const afterEast = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
+    expect(afterEast.xMm).toBeCloseTo(before.xMm, 6);
+
+    const west = cropPictureFrame({ widthMm: 100, heightMm: 70, handle: "w", deltaXmm: 20, deltaYmm: 0, layout: baseLayout });
+    west.frameOffsetXMm += centeredColumnResizeOffset(100, west.widthMm, 0);
+    project.expenses[0].attachments[0].layout = { ...baseLayout, ...west };
+    const afterWest = layoutReceiptBookItems(buildReceiptBookItems(project))[0][0];
+    expect(afterWest.xMm + afterWest.widthMm).toBeCloseTo(before.xMm + before.widthMm, 6);
+  });
+
+  it("한 페이지만 한 열로 채워지면 열 전체를 가로 중앙에 둔다", () => {
+    const project = createEmptyProject();
+    project.expenses = [
+      { ...expense(1), offlineHolders: [{ id: "narrow", widthMm: 80, heightMm: 90 }] },
+      { ...expense(2), offlineHolders: [{ id: "wide", widthMm: 120, heightMm: 90 }] },
+    ];
+
+    const page = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
+    expect(page).toMatchObject([
+      { xMm: 35, pageColumnCount: 1, columnWidthMm: 120 },
+      { xMm: 35, pageColumnCount: 1, columnWidthMm: 120 },
+    ]);
   });
 
   it("한 지출에 여러 실물 홀더를 만들고 각 홀더 크기로 자동 배치한다", () => {

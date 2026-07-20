@@ -41,11 +41,15 @@ nav { display:flex;flex-direction:column;gap:5px; } nav button{height:44px;paddi
 @media print{body{min-width:0;background:white}.no-print,.sidebar,.topbar,.page-heading,.receipt-toolbar{display:none!important}.main-area{margin:0;width:100%}.page{padding:0;max-width:none}.receipt-page-wrap{display:block}.receipt-sheet{margin:0;border:0;box-shadow:none;width:210mm;height:297mm;min-height:297mm;overflow:hidden;break-after:page;page-break-after:always}.receipt-grid-sheet{padding:10mm 10mm 8mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt-tile{break-inside:avoid;page-break-inside:avoid}.receipt-tile-label>span{border:1px solid #1d3559}.receipt-meta em{display:none}.receipt-tile .physical-placeholder{border-color:#888}.shared-evidence .attachment-placeholder{display:flex!important}@page{size:A4 portrait;margin:0}}
 
 /* 영수증 편집용 플로팅 상황별 도구막대 */
-.receipt-floating-toolbar-anchor{position:sticky;top:76px;z-index:60;height:0;display:flex;justify-content:center;pointer-events:none}
-.receipt-floating-toolbar-anchor .receipt-editor-controls{pointer-events:auto;display:flex;align-items:center;gap:8px;width:max-content;max-width:calc(100vw - 330px);margin:8px 0 0;padding:9px 10px;border-color:#d8dee8;border-radius:14px;background:#fffffff2;box-shadow:0 14px 38px #15213c2b;backdrop-filter:blur(14px)}
-.receipt-floating-toolbar-anchor .editor-selection{width:300px;padding:0 9px 0 3px;border-right:1px solid #e2e6ec}
-.receipt-floating-toolbar-anchor .button{flex:none;min-height:35px;padding:7px 11px}
-.receipt-floating-toolbar-anchor .holder-controls .editor-selection{width:320px}
+.receipt-floating-toolbar-anchor{position:sticky;top:82px;z-index:60;height:0;display:flex;justify-content:center;pointer-events:none}
+.receipt-floating-toolbar-anchor .receipt-editor-controls{pointer-events:auto;display:flex;align-items:center;gap:12px;width:min(1180px,calc(100vw - 330px));max-width:none;margin:10px 0 0;padding:13px 15px;border-color:#d8dee8;border-radius:18px;background:#fffffff2;box-shadow:0 18px 46px #15213c30;backdrop-filter:blur(14px)}
+.receipt-floating-toolbar-anchor .editor-selection{flex:1;width:auto;min-width:320px;padding:0 16px 0 5px;border-right:1px solid #dfe4eb}
+.receipt-floating-toolbar-anchor .editor-selection>svg{width:29px;height:29px}
+.receipt-floating-toolbar-anchor .editor-selection strong{font-size:14px}
+.receipt-floating-toolbar-anchor .editor-selection span{font-size:10px;margin-top:5px}
+.receipt-floating-toolbar-anchor .button{flex:none;min-height:50px;padding:10px 17px;border-radius:13px;font-size:13px;gap:8px}
+.receipt-floating-toolbar-anchor .button svg{width:20px;height:20px}
+.receipt-floating-toolbar-anchor .holder-controls .editor-selection{min-width:350px}
 
 /* Word/Excel처럼 프레임은 마스크가 되고, 그림 자체는 그 뒤에서 이동한다. */
 .receipt-flow-item .online-receipt{position:relative;overflow:visible}
@@ -70,4 +74,4 @@ nav { display:flex;flex-direction:column;gap:5px; } nav button{height:44px;paddi
 
 .attachment-row{grid-template-columns:18px minmax(0,1fr) 115px 28px}
 
-@media(max-width:1050px){.receipt-floating-toolbar-anchor .editor-selection{width:220px}.receipt-floating-toolbar-anchor .receipt-editor-controls{max-width:calc(100vw - 48px)}}
+@media(max-width:1050px){.receipt-floating-toolbar-anchor .editor-selection{min-width:210px}.receipt-floating-toolbar-anchor .receipt-editor-controls{width:calc(100vw - 48px);gap:8px;padding:10px}.receipt-floating-toolbar-anchor .button{min-height:43px;padding:8px 11px;font-size:11px}}

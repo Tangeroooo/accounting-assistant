@@ -68,7 +68,7 @@ import {
   saveProjectPackageAs,
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
-import { buildReceiptBookItems, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, resizePictureFrame, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookPdf } from "./lib/receipt-pdf";
 import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
 import ProjectOnboarding from "./components/ProjectOnboarding";
@@ -579,6 +579,9 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     pixelsPerMmX: number;
     pixelsPerMmY: number;
     cropMode: boolean;
+    singleColumnPage: boolean;
+    columnWidthMm: number;
+    otherColumnMaxWidthMm: number;
     layout?: NonNullable<Attachment["layout"]>;
   } | null>(null);
   const transportFuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
@@ -629,6 +632,11 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
     const bounds = event.currentTarget.closest(".receipt-flow-item")?.getBoundingClientRect();
     const { attachment, offlineHolder, expense, evidenceId } = placement.item;
     if (!bounds || (!attachment && !offlineHolder)) return;
+    const placementPage = receiptPages.find((page) => page.some((entry) => entry.item.id === placement.item.id));
+    const singleColumnPage = placement.pageColumnCount === 1;
+    const otherColumnMaxWidthMm = singleColumnPage
+      ? Math.max(0, ...(placementPage ?? []).filter((entry) => entry.item.id !== placement.item.id).map((entry) => entry.widthMm))
+      : 0;
     resizeRef.current = {
       target: attachment ? "attachment" : "offline-holder",
       attachmentId: attachment?.id,
@@ -643,6 +651,9 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
       pixelsPerMmX: bounds.width / placement.widthMm,
       pixelsPerMmY: bounds.height / placement.heightMm,
       cropMode: offlineHolder ? true : croppingAttachmentId === attachment?.id,
+      singleColumnPage,
+      columnWidthMm: placement.columnWidthMm ?? placement.widthMm,
+      otherColumnMaxWidthMm,
       layout: attachment ? { ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout } : undefined,
     };
   };
@@ -674,6 +685,13 @@ function ReceiptBookView({ project, updateProject, onSavePdf, pdfBusy }: { proje
           layout: resize.layout,
         })
         : undefined;
+      if (croppedFrame && resize.singleColumnPage) {
+        croppedFrame.frameOffsetXMm += centeredColumnResizeOffset(
+          resize.columnWidthMm,
+          croppedFrame.widthMm,
+          resize.otherColumnMaxWidthMm,
+        );
+      }
       updateAttachmentLayout(resize.attachmentId, () => ({
         ...resize.layout!,
         ...(croppedFrame ?? resizedFrame),
