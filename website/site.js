@@ -29,7 +29,7 @@ const applyRelease = (release) => {
     const link = document.querySelector(`[data-download="${platform}"]`);
     const note = document.querySelector(`[data-asset-note="${platform}"]`);
     if (link) link.href = asset?.browser_download_url || release.html_url || latestReleasePage;
-    if (note && asset) note.textContent = `${platform === "windows" ? "EXE 설치 프로그램" : "DMG 설치 이미지"} · ${formatBytes(asset.size)}`;
+    if (note && asset) note.textContent = `${platform === "windows" ? "EXE 설치 프로그램 · 언인스톨러 포함" : "DMG 설치 이미지"} · ${formatBytes(asset.size)}`;
   });
 };
 

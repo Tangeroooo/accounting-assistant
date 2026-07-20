@@ -54,6 +54,8 @@ npm install
 npm run tauri -- build
 ```
 
+배포하는 `*-setup.exe`는 NSIS 설치 프로그램입니다. 설치가 끝나면 Windows `설정 → 앱 → 설치된 앱`에 바른장부와 제거 항목이 등록되므로 별도의 언인스톨러 파일을 내려받을 필요가 없습니다.
+
 macOS·Windows 설치본을 GitHub Releases에 만들고 자동 업데이트를 배포하는 절차는 [docs/releasing.md](docs/releasing.md)를 참고하세요.
 
 ## 프로젝트 구조

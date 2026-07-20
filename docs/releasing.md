@@ -72,7 +72,34 @@ https://tangeroooo.github.io/accounting-assistant/
 
 업데이트 서명은 이미 설정되어 있지만 운영체제 게시자 서명은 별개입니다.
 
-- 현재 macOS 빌드는 ad-hoc 서명을 사용합니다. 외부 공개 배포 전에는 Apple Developer ID 인증서와 notarization secret을 GitHub Actions에 연결하는 것이 좋습니다.
+- 현재 macOS 빌드는 ad-hoc 서명을 사용합니다. 따라서 브라우저로 받은 앱을 처음 열 때 macOS에서 개발자를 확인할 수 없다는 Gatekeeper 안내가 표시됩니다. 이 경고를 일반 사용자에게서 없애려면 Apple Developer Program의 `Developer ID Application` 인증서로 서명하고 Apple 공증(notarization)을 받아야 합니다. 무료 Apple Developer 계정이나 ad-hoc 서명만으로는 해결되지 않습니다.
 - 현재 Windows 빌드는 게시자 인증서로 서명하지 않습니다. 외부 공개 배포 전에는 코드 서명 인증서를 연결하는 것이 좋습니다.
 
 운영체제 인증서가 없어도 내부 시험 설치는 가능하지만 macOS Gatekeeper 또는 Windows SmartScreen 경고가 표시될 수 있습니다.
+
+### macOS Developer ID 서명과 공증 준비
+
+1. Apple Developer Program에 가입합니다. 연 회비는 지역별 현지 통화로 청구되는 99 USD이며, 조건을 충족하는 비영리단체·교육기관·정부기관은 면제를 신청할 수 있습니다.
+2. 계정 보유자가 Apple Developer의 `Certificates, Identifiers & Profiles`에서 `Developer ID Application` 인증서를 만들고 이 Mac의 키체인에 설치합니다.
+3. 키체인에서 인증서와 개인키를 암호가 있는 `.p12`로 내보내고 base64로 변환합니다.
+4. Apple 계정에서 앱 전용 암호를 생성하고 Team ID를 확인합니다.
+5. 아래 GitHub Actions secrets를 저장소에 등록합니다.
+
+```text
+APPLE_CERTIFICATE
+APPLE_CERTIFICATE_PASSWORD
+APPLE_SIGNING_IDENTITY
+APPLE_ID
+APPLE_PASSWORD
+APPLE_TEAM_ID
+```
+
+인증서 준비가 끝나면 Release 워크플로의 macOS job에 위 secrets를 전달해 Tauri가 서명·공증·티켓 첨부를 수행하도록 전환합니다. 공증된 DMG는 `codesign --verify`, `spctl --assess`, `xcrun stapler validate`로 확인한 뒤 배포합니다. 인증서나 앱 전용 암호는 소스와 Release 파일에 직접 넣지 않습니다.
+
+공증 전 시험본을 본인이 실행할 때는 앱을 Finder에서 Control-클릭한 뒤 `열기`를 선택하거나 `시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기`를 사용할 수 있습니다. Gatekeeper 자체를 끄는 방식은 사용하지 않습니다.
+
+### Windows 설치와 제거
+
+공개하는 `*-setup.exe`는 앱 본체를 그대로 둔 포터블 파일이 아니라 Tauri의 NSIS 설치 프로그램입니다. 이 한 파일이 앱, 시작 메뉴 바로가기, 업데이트에 필요한 설치 정보를 등록하며 설치 후 Windows `설정 → 앱 → 설치된 앱`에서 제거할 수 있는 언인스톨러도 함께 만듭니다. 사용자가 별도의 제거 EXE를 내려받을 필요는 없습니다.
+
+원시 실행 파일 하나만 별도로 배포하는 것도 기술적으로는 가능하지만 설치 위치, 바로가기, WebView2 확인, 자동 업데이트, 제거 흐름이 약해집니다. 컴퓨터 사용이 익숙하지 않은 사용자를 대상으로는 현재의 한 개짜리 `setup.exe` 배포를 기본으로 유지합니다.
