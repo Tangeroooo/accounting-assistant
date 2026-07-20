@@ -941,7 +941,7 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   return <section className={`receipt-tile receipt-flow-item ${selected ? "selected" : ""} ${cropMode ? "crop-mode" : ""} ${offlineHolder ? "offline" : "online"}`} style={{ left: `${placement.xMm}mm`, top: `${placement.yMm}mm`, width: `${placement.widthMm}mm`, height: `${placement.heightMm}mm` }}>
     {cropMode && attachment && <PrintableAttachment project={project} attachment={attachment} alt="자르기 중인 원본 그림" frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} ghost />}
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
-      {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>내보낸 PDF·Word에는 포함되지 않습니다</small></div>}
+      {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>이 라벨은 내보낸 PDF·Word에는 포함되지 않습니다</small></div>}
       {offlineHolder && <span className="offline-holder-dimensions no-print" style={holderDimensionsStyle}>{holderDimensionsLabel}</span>}
       {offlineHolder
         ? <div className="physical-placeholder"><strong>{offlinePlaceholderLabel(item)}</strong>{amountLabel && <span className="physical-placeholder-amount">{amountLabel}</span>}<small>{evidenceId ? "산정 증빙을 중앙에 붙이세요" : "실물 영수증을 중앙에 붙이세요"}</small></div>
