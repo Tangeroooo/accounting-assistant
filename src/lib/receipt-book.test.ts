@@ -34,7 +34,7 @@ describe("영수증철 페이지 구성", () => {
     ]);
   });
 
-  it("앞 그림의 너비를 바꾸면 뒤 그림이 워드프로세서처럼 다음 줄로 재배치된다", () => {
+  it("앞 그림의 세로 길이를 줄이면 뒤 그림이 위로 이어 붙어 세로 우선으로 재배치된다", () => {
     const project = createEmptyProject();
     project.expenses = Array.from({ length: 3 }, (_, index) => ({
       ...expense(index + 1),
@@ -45,22 +45,22 @@ describe("영수증철 페이지 구성", () => {
         originalName: `${index + 1}.png`,
         mimeType: "image/png",
         kind: "online-receipt" as const,
-        layout: { widthMm: 60, aspectRatio: 1, scale: 1, offsetX: 0, offsetY: 0, rotation: 0 },
+        layout: { widthMm: 70, heightMm: 80, aspectRatio: 1, fit: "cover" as const, scale: 1, offsetX: 0, offsetY: 0, rotation: 0 },
       }],
     }));
     const before = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
     expect(before.map(({ xMm, yMm }) => ({ xMm, yMm }))).toEqual([
       { xMm: 0, yMm: 0 },
-      { xMm: 64, yMm: 0 },
-      { xMm: 128, yMm: 0 },
+      { xMm: 0, yMm: 84 },
+      { xMm: 0, yMm: 168 },
     ]);
 
-    project.expenses[0].attachments[0].layout!.widthMm = 100;
+    project.expenses[0].attachments[0].layout!.heightMm = 40;
     const after = layoutReceiptBookItems(buildReceiptBookItems(project))[0];
     expect(after.map(({ xMm, yMm }) => ({ xMm, yMm }))).toEqual([
       { xMm: 0, yMm: 0 },
-      { xMm: 104, yMm: 0 },
-      { xMm: 0, yMm: 104 },
+      { xMm: 0, yMm: 44 },
+      { xMm: 0, yMm: 128 },
     ]);
   });
 

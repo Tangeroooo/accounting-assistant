@@ -169,7 +169,7 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
       severity: "error",
       scope: "evidence",
       title: "교통비 공통 주유비 증빙이 없습니다",
-      detail: "주유비 지출이 있으므로 네이버 지도 거리·유류비 산정 증빙 1건을 등록해 주세요.",
+      detail: "주유비 지출이 있으므로 네이버 지도 거리·유류비 산정 증빙을 하나 이상 등록해 주세요. 여러 파일을 함께 첨부할 수 있습니다.",
     });
   }
 

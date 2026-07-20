@@ -33,6 +33,17 @@ export async function chooseAttachment() {
   return typeof selected === "string" ? selected : null;
 }
 
+export async function chooseAttachments() {
+  if (!isTauri()) return [];
+  const selected = await open({
+    directory: false,
+    multiple: true,
+    title: "영수증 또는 증빙 여러 개 선택",
+    filters: [{ name: "영수증·증빙", extensions: ["png", "jpg", "jpeg", "webp", "pdf"] }],
+  });
+  return Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
+}
+
 export async function saveProjectFile(projectDirectory: string, content: string) {
   if (!isTauri()) {
     localStorage.setItem("accounting-assistant-project", content);
@@ -112,9 +123,7 @@ export async function openProjectDocument(path: string): Promise<{ project: Proj
   return { project: { ...portableProject, projectDirectory: workspaceDirectory }, packagePath: path } as { project: ProjectData; packagePath: string };
 }
 
-export async function importAttachment(projectDirectory: string): Promise<Attachment | null> {
-  const sourcePath = await chooseAttachment();
-  if (!sourcePath) return null;
+async function importAttachmentPath(projectDirectory: string, sourcePath: string): Promise<Attachment> {
   const copied = await invoke<{
     absolutePath: string;
     relativePath: string;
@@ -135,6 +144,16 @@ export async function importAttachment(projectDirectory: string): Promise<Attach
             : "image/jpeg",
     kind: "online-receipt",
   };
+}
+
+export async function importAttachment(projectDirectory: string): Promise<Attachment | null> {
+  const sourcePath = await chooseAttachment();
+  return sourcePath ? importAttachmentPath(projectDirectory, sourcePath) : null;
+}
+
+export async function importAttachments(projectDirectory: string): Promise<Attachment[]> {
+  const sourcePaths = await chooseAttachments();
+  return Promise.all(sourcePaths.map((sourcePath) => importAttachmentPath(projectDirectory, sourcePath)));
 }
 
 export async function importClipboardAttachment(projectDirectory: string, file: File): Promise<Attachment> {

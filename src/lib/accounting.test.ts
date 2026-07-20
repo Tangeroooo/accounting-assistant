@@ -137,7 +137,7 @@ describe("교육자료 기반 검산", () => {
     expect(second.expense.payerId).toBe(first.people[0].id);
   });
 
-  it("주유비가 있으면 개별 짝이 아닌 교통비 공통 증빙 1건을 요구한다", () => {
+  it("주유비가 있으면 개별 짝이 아닌 교통비 공통 증빙을 하나 이상 요구한다", () => {
     const project = createEmptyProject();
     project.expenses = [expense({ isFuel: true })];
     expect(validateProject(project).some((issue) => issue.id === "missing-shared-fuel-evidence")).toBe(true);

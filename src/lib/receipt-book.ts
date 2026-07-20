@@ -134,27 +134,39 @@ export function layoutReceiptBookItems(
   const pages: ReceiptFlowPlacement[][] = [];
   let page: ReceiptFlowPlacement[] = [];
   let xMm = 0;
-  let yMm = 0;
-  let rowHeightMm = 0;
+  let column: Array<{ item: ReceiptBookItem; widthMm: number; heightMm: number }> = [];
+  let columnHeightMm = 0;
+  let columnWidthMm = 0;
 
-  for (const item of items) {
-    const { widthMm, heightMm } = dimensionsForItem(item, measuredAspectRatios);
-    if (xMm > 0 && xMm + widthMm > RECEIPT_FLOW_WIDTH_MM + 0.001) {
-      xMm = 0;
-      yMm += rowHeightMm + RECEIPT_FLOW_GAP_MM;
-      rowHeightMm = 0;
-    }
-    if (page.length > 0 && yMm + heightMm > RECEIPT_FLOW_HEIGHT_MM + 0.001) {
+  const flushColumn = () => {
+    if (column.length === 0) return;
+    if (page.length > 0 && xMm + columnWidthMm > RECEIPT_FLOW_WIDTH_MM + 0.001) {
       pages.push(page);
       page = [];
       xMm = 0;
-      yMm = 0;
-      rowHeightMm = 0;
     }
-    page.push({ item, xMm, yMm, widthMm, heightMm });
-    xMm += widthMm + RECEIPT_FLOW_GAP_MM;
-    rowHeightMm = Math.max(rowHeightMm, heightMm);
+    let yMm = 0;
+    for (const entry of column) {
+      page.push({ ...entry, xMm, yMm });
+      yMm += entry.heightMm + RECEIPT_FLOW_GAP_MM;
+    }
+    xMm += columnWidthMm + RECEIPT_FLOW_GAP_MM;
+    column = [];
+    columnHeightMm = 0;
+    columnWidthMm = 0;
+  };
+
+  for (const item of items) {
+    const dimensions = dimensionsForItem(item, measuredAspectRatios);
+    const nextHeight = columnHeightMm
+      + (column.length > 0 ? RECEIPT_FLOW_GAP_MM : 0)
+      + dimensions.heightMm;
+    if (column.length > 0 && nextHeight > RECEIPT_FLOW_HEIGHT_MM + 0.001) flushColumn();
+    column.push({ item, ...dimensions });
+    columnHeightMm += (column.length > 1 ? RECEIPT_FLOW_GAP_MM : 0) + dimensions.heightMm;
+    columnWidthMm = Math.max(columnWidthMm, dimensions.widthMm);
   }
+  flushColumn();
   if (page.length > 0) pages.push(page);
   return pages;
 }
