@@ -205,4 +205,49 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     const workbook = await outputZip.file("xl/workbook.xml")!.async("string");
     expect(workbook).toContain(`'국내-금전출납부'!$A$1:$F$${expectedFooterEnd}`);
   });
+
+  it("세부내역과 비고의 실제 줄 수 중 큰 값으로 거래행 높이를 정한다", async () => {
+    const originalBytes = await readFile(templatePath);
+    vi.stubGlobal("fetch", async () => new Response(originalBytes));
+
+    const project = createEmptyProject();
+    project.expenses = [
+      {
+        ...makeExpense(1),
+        content: "짧은 내용",
+        note: "비고내용".repeat(30),
+      },
+      {
+        ...makeExpense(2),
+        content: "긴 세부내역",
+        itemDetails: "세부내역".repeat(30),
+        note: "",
+      },
+      {
+        ...makeExpense(3),
+        content: "짧은 내용",
+        itemDetails: "",
+        note: "짧은 비고",
+      },
+    ];
+
+    const outputBytes = await createAccountingWorkbook(project);
+    const verificationDirectory = path.resolve(process.cwd(), "artifacts/verification");
+    await mkdir(verificationDirectory, { recursive: true });
+    await writeFile(path.join(verificationDirectory, "accounting-row-height-output.xlsx"), outputBytes);
+    const outputZip = await JSZip.loadAsync(outputBytes);
+    const ledger = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet3.xml")!.async("string"),
+      "application/xml",
+    );
+
+    const noteDrivenHeight = Number(ledger.querySelector('row[r="5"]')?.getAttribute("ht"));
+    const contentDrivenHeight = Number(ledger.querySelector('row[r="6"]')?.getAttribute("ht"));
+    const singleLineHeight = Number(ledger.querySelector('row[r="7"]')?.getAttribute("ht"));
+    expect(noteDrivenHeight).toBeGreaterThan(contentDrivenHeight);
+    expect(contentDrivenHeight).toBeGreaterThan(singleLineHeight);
+    expect(noteDrivenHeight).toBeGreaterThanOrEqual(300);
+    expect(contentDrivenHeight).toBeGreaterThanOrEqual(50);
+    expect(singleLineHeight).toBe(16.5);
+  });
 });

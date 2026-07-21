@@ -151,16 +151,46 @@ const expenseContent = (expense: Expense) => {
   return details ? `${taggedContent}_${details}` : taggedContent;
 };
 
-const wrappedLineCount = (value: string, charactersPerLine: number) =>
-  value.split("\n").reduce(
-    (lines, part) => lines + Math.max(1, Math.ceil([...part].length / charactersPerLine)),
-    0,
-  );
+const excelCharacterWidth = (character: string) => {
+  if (/\p{Mark}/u.test(character)) return 0;
+  if (character === "\t") return 4;
+  if (character === " ") return 0.5;
+  // 맑은 고딕에서 한글·한자·일본어·전각문자·이모지는 숫자/영문보다 넓다.
+  if (/[ᄀ-ᇿ⺀-꓏가-힯豈-﫿︐-﹯＀-｠￠-￦]|\p{Extended_Pictographic}/u.test(character)) {
+    return 1.5;
+  }
+  return 1;
+};
 
-const ledgerRowHeight = (expense: Expense) => {
-  const contentLines = wrappedLineCount(expenseContent(expense), 45);
-  const noteLines = expense.note ? wrappedLineCount(expense.note, 16) : 1;
-  return 16.5 * Math.max(1, contentLines, noteLines);
+const wrappedLineCount = (value: string, excelColumnWidth: number) => {
+  // 셀 안쪽 여백과 단어 단위 줄바꿈 오차를 감안해 실제 열 너비의 90%만 사용한다.
+  const availableWidth = Math.max(1, (excelColumnWidth - 1.5) * 0.9);
+  return value.split("\n").reduce((lineCount, explicitLine) => {
+    if (!explicitLine) return lineCount + 1;
+    let wrappedLines = 1;
+    let currentWidth = 0;
+    for (const character of explicitLine) {
+      const characterWidth = excelCharacterWidth(character);
+      if (currentWidth > 0 && currentWidth + characterWidth > availableWidth) {
+        wrappedLines += 1;
+        currentWidth = characterWidth;
+      } else {
+        currentWidth += characterWidth;
+      }
+    }
+    return lineCount + wrappedLines;
+  }, 0);
+};
+
+const ledgerRowHeight = (
+  expense: Expense,
+  contentColumnWidth: number,
+  noteColumnWidth: number,
+) => {
+  const contentLines = wrappedLineCount(expenseContent(expense), contentColumnWidth);
+  const noteLines = expense.note ? wrappedLineCount(expense.note, noteColumnWidth) : 1;
+  const requiredLines = Math.max(1, contentLines, noteLines);
+  return Math.min(409.5, requiredLines === 1 ? 16.5 : requiredLines * 16.5 + 2);
 };
 
 const formatKoreanDate = (date: string) => {
@@ -333,6 +363,16 @@ const rangeInfo = (range: string) => {
   };
 };
 
+const worksheetColumnWidth = (document: XmlDocument, column: number, fallback: number) => {
+  const definition = all<Element>(document, "cols col").find((candidate) => {
+    const min = Number(candidate.getAttribute("min"));
+    const max = Number(candidate.getAttribute("max"));
+    return min <= column && column <= max;
+  });
+  const width = Number(definition?.getAttribute("width"));
+  return Number.isFinite(width) && width > 0 ? width : fallback;
+};
+
 function replaceLedger(document: XmlDocument, project: ProjectData) {
   const sheetData = document.querySelector("sheetData");
   const mergeCells = document.querySelector("mergeCells");
@@ -375,6 +415,8 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   const teamMinistryAutoNoteStyle = cellAt(document, 34, "M");
   const dimension = document.querySelector("dimension");
   const templateMaxRow = rangeInfo(dimension?.getAttribute("ref") ?? "A1").endRow;
+  const contentColumnWidth = worksheetColumnWidth(document, 3, 74);
+  const noteColumnWidth = worksheetColumnWidth(document, 6, 11.33203125);
 
   for (const row of all<Element>(sheetData, ":scope > row")) {
     for (const cell of all<Element>(row, ":scope > c")) {
@@ -411,7 +453,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
       const row = ensureRow(document, sheetData, rowIndex);
       const style = offset === 0 ? sources.first : sources.middle;
       const expense = expenses[offset];
-      setRowHeight(row, ledgerRowHeight(expense));
+      setRowHeight(row, ledgerRowHeight(expense, contentColumnWidth, noteColumnWidth));
       for (const column of ["A", "B", "C", "D", "E", "F"]) {
         const useAutoNoteStyle = column === "F"
           && offset === 0
