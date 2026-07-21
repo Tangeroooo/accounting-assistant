@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, Check, FileSpreadsheet, FolderOpen, LoaderCircle
 import { useState } from "react";
 
 import type { IncomeType, ProjectData } from "../types";
+import MoneyInput from "./MoneyInput";
 
 interface ProjectOnboardingProps {
   project: ProjectData;
@@ -125,9 +126,9 @@ function OnboardingField({ label, value, onChange, placeholder, type = "text" }:
 }
 
 function IncomeRow({ number, title, description, value, onChange }: { number: string; title: string; description: string; value: number; onChange: (value: number) => void }) {
-  return <label className="income-onboarding-row"><span>{number}</span><div><strong>{title}</strong><small>{description}</small></div><div className="money-input"><input type="number" min="0" value={value || ""} placeholder="0" onChange={(event) => onChange(Number(event.target.value))} /><em>원</em></div></label>;
+  return <label className="income-onboarding-row"><span>{number}</span><div><strong>{title}</strong><small>{description}</small></div><div className="money-input"><MoneyInput value={value} placeholder="0" onChange={onChange} /><em>원</em></div></label>;
 }
 
 function DuesIncomeRow({ value, headcount, onChange }: { value: number; headcount: number; onChange: (value: number) => void }) {
-  return <label className="income-onboarding-row dues-onboarding-row"><span>1</span><div><strong>회비</strong><small>1인당 회비 × {headcount.toLocaleString("ko-KR")}명</small></div><div className="dues-onboarding-input"><div className="money-input"><input type="number" min="0" value={value || ""} placeholder="1인당 금액" onChange={(event) => onChange(Math.max(0, Number(event.target.value) || 0))} /><em>원</em></div><strong>= {(value * headcount).toLocaleString("ko-KR")}원</strong></div></label>;
+  return <label className="income-onboarding-row dues-onboarding-row"><span>1</span><div><strong>회비</strong><small>1인당 회비 × {headcount.toLocaleString("ko-KR")}명</small></div><div className="dues-onboarding-input"><div className="money-input"><MoneyInput value={value} placeholder="1인당 금액" onChange={onChange} /><em>원</em></div><strong>= {(value * headcount).toLocaleString("ko-KR")}원</strong></div></label>;
 }
