@@ -412,7 +412,7 @@ function App() {
               {saveState === "saving" ? <LoaderCircle className="spin" size={17} /> : saveState === "saved" ? <Check size={17} /> : <Save size={17} />}
               {!isTauri() ? ".barun 백업 저장" : !projectFilePath ? "프로젝트 저장" : saveState === "saving" ? "자동 저장 중" : saveState === "saved" ? "자동 저장됨" : saveState === "error" ? "저장 다시 시도" : "지금 저장"}
             </button>
-            <AppUpdater beforeInstall={async () => {
+            {isTauri() && <AppUpdater beforeInstall={async () => {
               setSaveState("saving");
               let savedProject = project;
               let savedPath = projectFilePath;
@@ -435,7 +435,7 @@ function App() {
               localStorage.setItem("accounting-assistant-project", serialized);
               persistedSnapshotRef.current = serialized;
               setSaveState("saved");
-            }} />
+            }} />}
             <span className="top-action-divider" />
             <button className="button output-button excel" onClick={handleExcelExport} disabled={outputBusy !== null} title={issues.some((issue) => issue.severity === "error") ? "검토 중인 상태도 중간 확인용 Excel로 저장할 수 있습니다." : undefined}><FileSpreadsheet size={17} /> {outputBusy === "excel" ? "Excel 생성 중" : "Excel 저장"}</button>
             <ReceiptExportControl format={receiptExportFormat} onFormatChange={setReceiptExportFormat} onExport={handleReceiptExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} compact />
