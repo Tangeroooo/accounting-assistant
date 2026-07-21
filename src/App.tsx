@@ -437,7 +437,7 @@ function App() {
               setSaveState("saved");
             }} />}
             <span className="top-action-divider" />
-            <button className="button output-button excel" onClick={handleExcelExport} disabled={outputBusy !== null} title={issues.some((issue) => issue.severity === "error") ? "검토 중인 상태도 중간 확인용 Excel로 저장할 수 있습니다." : undefined}><FileSpreadsheet size={17} /> {outputBusy === "excel" ? "Excel 생성 중" : "Excel 저장"}</button>
+            <button className="button output-button excel" onClick={handleExcelExport} disabled={outputBusy !== null} title={issues.some((issue) => issue.severity === "error") ? "검토 중인 상태도 중간 확인용 회계보고서 Excel 파일로 저장할 수 있습니다." : undefined}><FileSpreadsheet size={17} /> {outputBusy === "excel" ? "회계보고서 생성 중" : "회계보고서 저장"}</button>
             <ReceiptExportControl format={receiptExportFormat} onFormatChange={setReceiptExportFormat} onExport={handleReceiptExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} compact />
           </div>
         </header>
@@ -1280,10 +1280,10 @@ function ReceiptExportControl({ format, onFormatChange, onExport, busy, disabled
   const isBusy = busy === "pdf" || busy === "docx" || busy === true;
   return <div className={`receipt-export-control no-print ${compact ? "compact" : ""}`}>
     <select aria-label="영수증철 파일 형식" value={format} onChange={(event) => onFormatChange(event.target.value as ReceiptExportFormat)} disabled={isBusy}>
-      <option value="pdf">PDF (.pdf)</option>
-      <option value="docx">Word (.docx)</option>
+      <option value="pdf">영수증철 PDF</option>
+      <option value="docx">영수증철 Word</option>
     </select>
-    <button className={`button output-button ${format === "pdf" ? "pdf" : "word"}`} onClick={onExport} disabled={disabled}><Download size={17} /> {isBusy ? `${format === "pdf" ? "PDF" : "Word"} 생성 중` : compact ? "영수증철 저장" : "내보내기"}</button>
+    <button className={`button output-button ${format === "pdf" ? "pdf" : "word"}`} onClick={onExport} disabled={disabled}><Download size={17} /> {isBusy ? `영수증철 ${format === "pdf" ? "PDF" : "Word"} 생성 중` : "영수증철 저장"}</button>
   </div>;
 }
 function Field({ label, value, onChange, type = "text", placeholder, helper }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string; helper?: string }) { return <label className="field"><span>{label}</span><input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />{helper && <small>{helper}</small>}</label>; }
