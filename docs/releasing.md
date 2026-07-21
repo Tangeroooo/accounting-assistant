@@ -50,7 +50,7 @@ git push origin main
 git push origin v0.2.0
 ```
 
-GitHub Actions가 끝나면 GitHub의 Releases 화면에 `바른장부 v0.2.0`이 공개됩니다. 각 설치본과 `/releases/latest/download/latest.json`을 확인하고, 문제가 있으면 Release를 숨기는 대신 수정 버전의 패치 릴리스(예: `0.2.1`)를 배포합니다.
+GitHub Actions가 끝나면 GitHub의 Releases 화면에 `아웃리치 회계 v0.2.0`이 공개됩니다. 각 설치본과 `/releases/latest/download/latest.json`을 확인하고, 문제가 있으면 Release를 숨기는 대신 수정 버전의 패치 릴리스(예: `0.2.1`)를 배포합니다.
 
 ## 다운로드 홈페이지
 

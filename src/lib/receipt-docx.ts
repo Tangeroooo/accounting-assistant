@@ -110,11 +110,11 @@ export async function packageReceiptBookDocx(pages: ReceiptDocxPage[], title = "
 </Relationships>`);
   zip.file("docProps/core.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>${escapeXml(title)}</dc:title><dc:creator>바른장부</dc:creator><cp:lastModifiedBy>바른장부</cp:lastModifiedBy>
+  <dc:title>${escapeXml(title)}</dc:title><dc:creator>아웃리치 회계</dc:creator><cp:lastModifiedBy>아웃리치 회계</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:modified>
 </cp:coreProperties>`);
   zip.file("docProps/app.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Office Word</Application><AppVersion>16.0000</AppVersion><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop><Company>바른장부</Company><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><Pages>${pages.length}</Pages></Properties>`);
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Office Word</Application><AppVersion>16.0000</AppVersion><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop><Company>아웃리치 회계</Company><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><Pages>${pages.length}</Pages></Properties>`);
   zip.file("word/settings.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:zoom w:percent="100"/>

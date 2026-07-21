@@ -1,6 +1,6 @@
 {
-  "name": "바른장부 — 아웃리치 회계 도우미",
-  "short_name": "바른장부",
+  "name": "아웃리치 회계 — 보고서·영수증철 도우미",
+  "short_name": "아웃리치 회계",
   "description": "회계보고서 Excel과 영수증철 PDF·Word를 만드는 로컬 우선 회계 웹앱",
   "start_url": "./",
   "scope": "./",

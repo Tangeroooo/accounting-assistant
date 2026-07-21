@@ -54,9 +54,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: "v__VERSION__"
-          releaseName: "바른장부 v__VERSION__"
+          releaseName: "아웃리치 회계 v__VERSION__"
           releaseBody: |
-            회계 입력부터 공식 Excel 회계보고서와 PDF·Word 영수증철까지 만드는 바른장부입니다.
+            회계 입력부터 공식 Excel 회계보고서와 PDF·Word 영수증철까지 만드는 아웃리치 회계입니다.
 
             - macOS Apple Silicon(M1 이상): `macos-aarch64` DMG
             - macOS Intel: `macos-x86_64` DMG
@@ -70,5 +70,5 @@ jobs:
           uploadUpdaterSignatures: true
           updaterJsonPreferNsis: true
           retryAttempts: 2
-          releaseAssetNamePattern: "barun-accounting-[version]-[platform]-[arch][setup][ext]"
+          releaseAssetNamePattern: "outreach-accounting-[version]-[platform]-[arch][setup][ext]"
           args: ${{ matrix.args }}

@@ -47,10 +47,10 @@ export async function createBarunPackage(
 export async function parseBarunPackage(bytes: Uint8Array): Promise<ParsedBarunPackage> {
   const zip = await JSZip.loadAsync(bytes);
   const manifestFile = zip.file("manifest.json");
-  if (!manifestFile) throw new Error("바른장부 프로젝트의 manifest.json이 없습니다.");
+  if (!manifestFile) throw new Error("아웃리치 회계 프로젝트의 manifest.json이 없습니다.");
   const manifest = JSON.parse(await manifestFile.async("string")) as Partial<BarunManifest>;
   if (manifest.format !== BARUN_FORMAT || manifest.formatVersion !== BARUN_FORMAT_VERSION || !manifest.project) {
-    throw new Error("지원하지 않는 바른장부 프로젝트 형식입니다.");
+    throw new Error("지원하지 않는 아웃리치 회계 프로젝트 형식입니다.");
   }
   const assets = new Map<string, Uint8Array>();
   for (const entry of Object.values(zip.files)) {
@@ -60,7 +60,7 @@ export async function parseBarunPackage(bytes: Uint8Array): Promise<ParsedBarunP
   const missingAssets = collectProjectAssetPaths(manifest.project as ProjectData)
     .filter((relativePath) => !assets.has(relativePath));
   if (missingAssets.length > 0) {
-    throw new Error(`바른장부 프로젝트에서 첨부 이미지 ${missingAssets.length}개를 찾을 수 없습니다.`);
+    throw new Error(`아웃리치 회계 프로젝트에서 첨부 이미지 ${missingAssets.length}개를 찾을 수 없습니다.`);
   }
   return { project: manifest.project, assets };
 }

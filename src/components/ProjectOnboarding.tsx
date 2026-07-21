@@ -48,7 +48,7 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
   };
 
   return <main className="onboarding-shell">
-    <div className="onboarding-brand"><span><ReceiptText size={20} /></span><div><strong>바른장부</strong><small>처음 회계해도 순서대로</small></div></div>
+    <div className="onboarding-brand"><span><ReceiptText size={20} /></span><div><strong>아웃리치 회계</strong><small>처음 회계해도 순서대로</small></div></div>
     <section className="onboarding-card">
       <div className="onboarding-aside">
         <div><span className="eyebrow">NEW PROJECT</span><h1>회계 프로젝트를<br />함께 준비해 볼게요.</h1><p>지금 입력한 내용은 나중에 언제든 수정할 수 있습니다.</p></div>

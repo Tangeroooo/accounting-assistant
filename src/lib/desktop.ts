@@ -33,7 +33,7 @@ export async function chooseProjectFile() {
     directory: false,
     multiple: false,
     title: "회계 프로젝트 열기",
-    filters: [{ name: "바른장부 프로젝트", extensions: [BARUN_EXTENSION, "json"] }],
+    filters: [{ name: "아웃리치 회계 프로젝트", extensions: [BARUN_EXTENSION, "json"] }],
   });
   return typeof selected === "string" ? selected : null;
 }
@@ -134,7 +134,7 @@ export async function saveProjectPackageAs(project: ProjectData, defaultName: st
   }
   const packagePath = await save({
     defaultPath: defaultName,
-    filters: [{ name: "바른장부 프로젝트", extensions: [BARUN_EXTENSION] }],
+    filters: [{ name: "아웃리치 회계 프로젝트", extensions: [BARUN_EXTENSION] }],
   });
   if (!packagePath) return null;
   const bytes = await packageBytes(project);
