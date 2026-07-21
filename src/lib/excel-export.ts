@@ -62,6 +62,15 @@ const cloneRawCell = (source: Element, column: string, row: number) => {
   return cell;
 };
 
+const copyRawCellContent = (target: Element, source: Element) => {
+  while (target.firstChild) target.removeChild(target.firstChild);
+  const type = source.getAttribute("t");
+  if (type) target.setAttribute("t", type);
+  else target.removeAttribute("t");
+  for (const child of [...source.children]) target.appendChild(child.cloneNode(true));
+  return target;
+};
+
 const setText = (document: XmlDocument, cell: Element, value: string) => {
   while (cell.firstChild) cell.removeChild(cell.firstChild);
   cell.setAttribute("t", "inlineStr");
@@ -404,6 +413,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
       ]),
     ),
   }));
+  const standardSubtotalLabelSource = styleSources[0]?.total.B ?? null;
   const grandTotalSources = Object.fromEntries(
     ["A", "B", "C", "D", "E", "F"].map((column) => [column, cellAt(document, 47, column)]),
   );
@@ -442,8 +452,9 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
     const sources = styleSources[index];
     const expenses = project.expenses.filter((expense) => expense.category === definition.id);
     // 오른쪽 H:N의 샘플은 설명용일 뿐 제출용 A:F의 행 수를 결정하지 않는다.
-    // 각 항목에는 실제 지출(영수증) 건수만큼만 거래 행을 만든다.
-    const rowCount = expenses.length;
+    // 각 항목에는 실제 지출(영수증) 건수만큼 거래 행을 만들되,
+    // 지출이 없을 때도 수기 작성이 가능한 빈 거래 행 하나는 남긴다.
+    const rowCount = Math.max(1, expenses.length);
     const start = cursor;
     const total = start + rowCount;
     totalRows.push(total);
@@ -453,7 +464,10 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
       const row = ensureRow(document, sheetData, rowIndex);
       const style = offset === 0 ? sources.first : sources.middle;
       const expense = expenses[offset];
-      setRowHeight(row, ledgerRowHeight(expense, contentColumnWidth, noteColumnWidth));
+      setRowHeight(
+        row,
+        expense ? ledgerRowHeight(expense, contentColumnWidth, noteColumnWidth) : 16.5,
+      );
       for (const column of ["A", "B", "C", "D", "E", "F"]) {
         const useAutoNoteStyle = column === "F"
           && offset === 0
@@ -493,21 +507,18 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
     setRowHeight(totalRow, 16.5);
     for (const column of ["A", "B", "C", "D", "E", "F"]) {
       const source = sources.total[column];
-      // 소계 문구와 공백은 항목마다 템플릿 원문을 그대로 보존한다.
-      const cell = column === "B" && source
-        ? cloneRawCell(source, column, total)
-        : cloneCell(document, source, column, total);
-      if (column === "A" && rowCount === 0) {
-        setText(document, cell, getCategory(definition.id).label);
+      const cell = cloneCell(document, source, column, total);
+      // 각 항목의 셀 서식은 그대로 쓰고, 소계 문구만 첫 소계 셀의 표준 문구로 통일한다.
+      if (column === "B" && standardSubtotalLabelSource) {
+        copyRawCellContent(cell, standardSubtotalLabelSource);
       }
       if (column === "D") {
         const cached = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-        if (rowCount === 0) setNumber(document, cell, 0);
-        else setFormula(document, cell, `SUM(D${start}:D${total - 1})`, cached);
+        setFormula(document, cell, `SUM(D${start}:D${total - 1})`, cached);
       }
       appendCellOrdered(totalRow, cell);
     }
-    if (rowCount > 0) addMerge(`A${start}:A${total}`);
+    addMerge(`A${start}:A${total}`);
     addMerge(`B${total}:C${total}`);
     cursor = total + 1;
   }

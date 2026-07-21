@@ -96,29 +96,39 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     expect(sharedValues).not.toContain("비공개 계좌");
 
     const templateSubtotalRows = [10, 14, 23, 28, 33, 39, 41, 46];
-    const outputSubtotalRows = [12, 13, 14, 15, 16, 18, 19, 20];
+    const outputSubtotalRows = [12, 14, 16, 18, 20, 22, 24, 26];
+    const standardSubtotalLabel = sharedStringCellText(originalLedgerDocument, sharedValues, "B10");
     expect(outputSubtotalRows.map((row) => sharedStringCellText(ledgerDocument, sharedValues, `B${row}`)))
-      .toEqual(templateSubtotalRows.map((row) => sharedStringCellText(originalLedgerDocument, sharedValues, `B${row}`)));
+      .toEqual(outputSubtotalRows.map(() => standardSubtotalLabel));
+    // 문구만 통일하고 각 항목 소계 셀의 기존 서식은 그대로 유지한다.
+    expect(outputSubtotalRows.map((row) => ledgerDocument.querySelector(`c[r="B${row}"]`)?.getAttribute("s")))
+      .toEqual(templateSubtotalRows.map((row) => originalLedgerDocument.querySelector(`c[r="B${row}"]`)?.getAttribute("s")));
 
     // 교통비 7건은 5~11행만 사용하고 12행에서 합산한다.
     expect(ledgerDocument.querySelector('c[r="D12"] f')?.textContent).toBe("SUM(D5:D11)");
     expect(ledgerDocument.querySelector('mergeCell[ref="A5:A12"]')).not.toBeNull();
-    // 지출이 없는 항목은 빈 거래행을 만들지 않고 합계행 하나만 둔다.
-    for (const row of [13, 14, 15, 16, 19, 20]) {
-      expect(ledgerDocument.querySelector(`c[r="D${row}"] f`)).toBeNull();
-      expect(ledgerDocument.querySelector(`c[r="D${row}"] v`)?.textContent).toBe("0");
+    // 지출이 없는 항목은 빈 거래행 하나와 소계행을 둔다.
+    for (const row of [13, 15, 17, 19, 23, 25]) {
+      for (const column of ["B", "C", "D", "E", "F"]) {
+        expect(ledgerDocument.querySelector(`c[r="${column}${row}"]`)?.children).toHaveLength(0);
+      }
       expect(ledgerDocument.querySelector(`row[r="${row}"]`)?.getAttribute("ht")).toBe("16.5");
     }
-    // 팀별사역비 1건은 거래행 17행과 합계행 18행으로 정확히 구성한다.
-    expect(ledgerDocument.querySelector('c[r="D18"] f')?.textContent).toBe("SUM(D17:D17)");
-    expect(ledgerDocument.querySelector('mergeCell[ref="A17:A18"]')).not.toBeNull();
-    expect(ledgerDocument.querySelector('mergeCell[ref="F17:F19"]')).toBeNull();
-    expect(Number(ledgerDocument.querySelector('row[r="17"]')?.getAttribute("ht"))).toBeGreaterThan(16.5);
-    // 오른쪽 샘플은 50행까지 남아도 제출용 A:F는 각주 24행에서 끝난다.
+    for (const [blankRow, subtotalRow] of [[13, 14], [15, 16], [17, 18], [19, 20], [23, 24], [25, 26]]) {
+      expect(ledgerDocument.querySelector(`c[r="D${subtotalRow}"] f`)?.textContent).toBe(`SUM(D${blankRow}:D${blankRow})`);
+      expect(ledgerDocument.querySelector(`c[r="D${subtotalRow}"] v`)?.textContent).toBe("0");
+      expect(ledgerDocument.querySelector(`mergeCell[ref="A${blankRow}:A${subtotalRow}"]`)).not.toBeNull();
+    }
+    // 팀별사역비 1건은 거래행 21행과 소계행 22행으로 정확히 구성한다.
+    expect(ledgerDocument.querySelector('c[r="D22"] f')?.textContent).toBe("SUM(D21:D21)");
+    expect(ledgerDocument.querySelector('mergeCell[ref="A21:A22"]')).not.toBeNull();
+    expect(ledgerDocument.querySelector('mergeCell[ref="F21:F23"]')).toBeNull();
+    expect(Number(ledgerDocument.querySelector('row[r="21"]')?.getAttribute("ht"))).toBeGreaterThan(16.5);
+    // 오른쪽 샘플은 50행까지 남아도 제출용 A:F는 각주 30행에서 끝난다.
     const leftReferences = [...ledgerDocument.querySelectorAll("sheetData c")]
       .map((cell) => cell.getAttribute("r") ?? "")
       .filter((reference) => /^[A-F]\d+$/.test(reference));
-    expect(Math.max(...leftReferences.map((reference) => Number(reference.match(/\d+$/)?.[0])))).toBe(24);
+    expect(Math.max(...leftReferences.map((reference) => Number(reference.match(/\d+$/)?.[0])))).toBe(30);
     expect(ledgerDocument.querySelector('mergeCell[ref="H5:H10"]')).not.toBeNull();
     expect(ledgerDocument.querySelector("dimension")?.getAttribute("ref")).toBe("A1:N50");
 
@@ -156,7 +166,7 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     expect(summary.querySelector('c[r="E26"] f')?.getAttribute("si")).toBe("3");
 
     const workbook = await outputZip.file("xl/workbook.xml")!.async("string");
-    expect(workbook).toContain("'국내-금전출납부'!$A$1:$F$24");
+    expect(workbook).toContain("'국내-금전출납부'!$A$1:$F$30");
     expect([...outputZip.file(/xl\/worksheets\/sheet\d+\.xml/)]).toHaveLength(6);
 
     const afterBytes = await readFile(templatePath);
@@ -164,7 +174,7 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     expect(afterHash).toBe(beforeHash);
   });
 
-  it("모든 항목의 거래행을 항목별 영수증 건수와 정확히 일치시킨다", async () => {
+  it("모든 항목의 거래행을 영수증 건수와 맞추고 0건이면 빈 행 하나를 둔다", async () => {
     const originalBytes = await readFile(templatePath);
     vi.stubGlobal("fetch", async () => new Response(originalBytes));
 
@@ -190,17 +200,18 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     CATEGORY_DEFINITIONS.forEach((_, categoryIndex) => {
       const count = counts[categoryIndex];
       const start = cursor;
-      const total = start + count;
+      const detailCount = Math.max(1, count);
+      const total = start + detailCount;
       const totalCell = ledger.querySelector(`c[r="D${total}"]`);
 
       if (count === 0) {
-        expect(totalCell?.querySelector("f")).toBeNull();
-        expect(totalCell?.querySelector("v")?.textContent).toBe("0");
-        expect(ledger.querySelector(`mergeCell[ref="A${start}:A${total}"]`)).toBeNull();
-      } else {
-        expect(totalCell?.querySelector("f")?.textContent).toBe(`SUM(D${start}:D${total - 1})`);
-        expect(ledger.querySelector(`mergeCell[ref="A${start}:A${total}"]`)).not.toBeNull();
+        for (const column of ["B", "C", "D", "E", "F"]) {
+          expect(ledger.querySelector(`c[r="${column}${start}"]`)?.children).toHaveLength(0);
+        }
+        expect(ledger.querySelector(`row[r="${start}"]`)?.getAttribute("ht")).toBe("16.5");
       }
+      expect(totalCell?.querySelector("f")?.textContent).toBe(`SUM(D${start}:D${total - 1})`);
+      expect(ledger.querySelector(`mergeCell[ref="A${start}:A${total}"]`)).not.toBeNull();
       expect(ledger.querySelector(`mergeCell[ref="B${total}:C${total}"]`)).not.toBeNull();
       cursor = total + 1;
     });
