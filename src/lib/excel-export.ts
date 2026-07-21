@@ -492,11 +492,14 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
     const totalRow = ensureRow(document, sheetData, total);
     setRowHeight(totalRow, 16.5);
     for (const column of ["A", "B", "C", "D", "E", "F"]) {
-      const cell = cloneCell(document, sources.total[column], column, total);
+      const source = sources.total[column];
+      // 소계 문구와 공백은 항목마다 템플릿 원문을 그대로 보존한다.
+      const cell = column === "B" && source
+        ? cloneRawCell(source, column, total)
+        : cloneCell(document, source, column, total);
       if (column === "A" && rowCount === 0) {
         setText(document, cell, getCategory(definition.id).label);
       }
-      if (column === "B") setText(document, cell, "합계");
       if (column === "D") {
         const cached = expenses.reduce((sum, expense) => sum + expense.amount, 0);
         if (rowCount === 0) setNumber(document, cell, 0);

@@ -85,11 +85,20 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     );
     const sharedValues = sharedStringValues(sharedStrings);
     const ledgerDocument = new DOMParser().parseFromString(ledger, "application/xml");
+    const originalLedgerDocument = new DOMParser().parseFromString(
+      await originalZip.file("xl/worksheets/sheet3.xml")!.async("string"),
+      "application/xml",
+    );
     expect(sharedValues).toContain("[교통비] 교통비 7_택시 1회");
     expect(sharedValues).toContain("팀별사역지원금 300.000원\n팀회비\n5.850원 사용");
     expect(sharedStringCellText(ledgerDocument, sharedValues, "C10")).toBe("[교통비] 교통비 7_택시 1회");
     expect(sharedValues).not.toContain("비공개 결제자");
     expect(sharedValues).not.toContain("비공개 계좌");
+
+    const templateSubtotalRows = [10, 14, 23, 28, 33, 39, 41, 46];
+    const outputSubtotalRows = [12, 13, 14, 15, 16, 18, 19, 20];
+    expect(outputSubtotalRows.map((row) => sharedStringCellText(ledgerDocument, sharedValues, `B${row}`)))
+      .toEqual(templateSubtotalRows.map((row) => sharedStringCellText(originalLedgerDocument, sharedValues, `B${row}`)));
 
     // 교통비 7건은 5~11행만 사용하고 12행에서 합산한다.
     expect(ledgerDocument.querySelector('c[r="D12"] f')?.textContent).toBe("SUM(D5:D11)");
