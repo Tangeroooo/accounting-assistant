@@ -69,6 +69,15 @@
 .screen-guide.reverse { grid-template-columns: .92fr 1.08fr; }
 .screen-guide.reverse img { order: 2; }
 .screen-guide img { border: 1px solid #dce1ea; border-radius: 15px; box-shadow: 0 13px 35px rgba(25,39,65,.11); }
+.guide-shot { margin: 24px 0 0; overflow: hidden; border: 1px solid #dce1ea; border-radius: 17px; background: #f8f9fb; box-shadow: 0 13px 35px rgba(25,39,65,.08); }
+.guide-shot img { width: 100%; display: block; aspect-ratio: 16 / 9; object-fit: cover; border-bottom: 1px solid #dce1ea; }
+.guide-shot figcaption { padding: 16px 18px; display: grid; gap: 4px; }
+.guide-shot figcaption b { color: #263550; font-size: 12px; }
+.guide-shot figcaption span { color: var(--muted); font-size: 10px; line-height: 1.65; }
+.guide-shot-wide { margin-bottom: 24px; }
+.guide-shot-grid { margin-top: 25px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.guide-shot-grid .guide-shot { margin: 0; }
+.guide-shot-wide-grid { grid-column: 1 / -1; }
 .numbered-actions { padding: 0; margin: 0; display: grid; gap: 16px; list-style: none; }
 .numbered-actions li { display: flex; gap: 11px; }
 .numbered-actions li > span { width: 26px; height: 26px; flex: 0 0 auto; display: grid; place-items: center; color: white; background: var(--navy); border-radius: 8px; font-size: 10px; font-weight: 900; }
@@ -161,6 +170,8 @@
   .do-first-grid, .output-cards { grid-template-columns: 1fr; }
   .screen-guide, .screen-guide.reverse { grid-template-columns: 1fr; }
   .screen-guide.reverse img { order: 0; }
+  .guide-shot-grid { grid-template-columns: 1fr; }
+  .guide-shot-wide-grid { grid-column: auto; }
   .formula-card, .reconcile-explanation { grid-template-columns: 1fr; }
   .formula-card > i, .reconcile-explanation > i { text-align: center; }
   .horizontal-flow { grid-template-columns: repeat(2, 1fr); }
