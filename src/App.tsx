@@ -1278,12 +1278,15 @@ function PageHeading({ eyebrow, title, description, action }: { eyebrow: string;
 
 function ReceiptExportControl({ format, onFormatChange, onExport, busy, disabled, compact = false }: { format: ReceiptExportFormat; onFormatChange: (format: ReceiptExportFormat) => void; onExport: () => void; busy: "excel" | ReceiptExportFormat | boolean | null; disabled: boolean; compact?: boolean }) {
   const isBusy = busy === "pdf" || busy === "docx" || busy === true;
-  return <div className={`receipt-export-control no-print ${compact ? "compact" : ""}`}>
-    <select aria-label="영수증철 파일 형식" value={format} onChange={(event) => onFormatChange(event.target.value as ReceiptExportFormat)} disabled={isBusy}>
-      <option value="pdf">영수증철 PDF</option>
-      <option value="docx">영수증철 Word</option>
+  const formatName = format === "pdf" ? "PDF" : "Word";
+  return <div className={`receipt-export-control no-print ${compact ? "compact" : ""}`} role="group" aria-label="영수증철 저장">
+    <span className="receipt-export-label"><ReceiptText size={15} /><strong>영수증철</strong></span>
+    <span className="receipt-export-divider" aria-hidden="true" />
+    <select aria-label="영수증철 저장 형식" value={format} onChange={(event) => onFormatChange(event.target.value as ReceiptExportFormat)} disabled={isBusy}>
+      <option value="pdf">PDF</option>
+      <option value="docx">Word</option>
     </select>
-    <button className={`button output-button ${format === "pdf" ? "pdf" : "word"}`} onClick={onExport} disabled={disabled}><Download size={17} /> {isBusy ? `영수증철 ${format === "pdf" ? "PDF" : "Word"} 생성 중` : "영수증철 저장"}</button>
+    <button className={`button output-button ${format === "pdf" ? "pdf" : "word"}`} aria-label={`영수증철 ${formatName} 저장`} onClick={onExport} disabled={disabled}><Download size={15} /> {isBusy ? `${formatName} 생성 중` : "저장"}</button>
   </div>;
 }
 function Field({ label, value, onChange, type = "text", placeholder, helper }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string; helper?: string }) { return <label className="field"><span>{label}</span><input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />{helper && <small>{helper}</small>}</label>; }
