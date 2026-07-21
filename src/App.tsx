@@ -877,7 +877,13 @@ function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, 
     });
     setSelectedOfflineHolderId(holder.id);
   };
-  return <section className="page receipt-page-wrap" onPointerDownCapture={handleEditorBackgroundPointerDown}><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." action={<div className="receipt-page-actions no-print"><button className="button secondary receipt-preview-button" onClick={() => { clearSelection(); setPreviewFormat(exportFormat); }} disabled={outputBusy !== null || project.expenses.length === 0}><Eye size={17} /> 미리보기</button><ReceiptExportControl format={exportFormat} onFormatChange={onExportFormatChange} onExport={onExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} /></div>} />
+  return <section className="page receipt-page-wrap" onPointerDownCapture={handleEditorBackgroundPointerDown}><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." />
+    <div className="receipt-output-floating-anchor no-print">
+      <div className="receipt-output-floating-bar">
+        <button className="button secondary receipt-preview-button" onClick={() => { clearSelection(); setPreviewFormat(exportFormat); }} disabled={outputBusy !== null || project.expenses.length === 0}><Eye size={17} /> 미리보기</button>
+        <ReceiptExportControl format={exportFormat} onFormatChange={onExportFormatChange} onExport={onExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} />
+      </div>
+    </div>
     <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림·홀더 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>세로 우선 자동 배치</strong><span>위→아래로 채운 뒤 다음 열로 이동 · 크기 변경 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 내보낸 파일에 넣지 않고 인쇄 후 직접 기입</div></div>
     {selectedItem && <div className="receipt-floating-toolbar-anchor no-print"><div className={`panel receipt-editor-controls active ${selectedItem.offlineHolder ? "holder-controls" : ""}`}>
       <div className="editor-selection">{selectedItem.offlineHolder ? <ReceiptText size={22} /> : <FileImage size={22} />}<div><strong>{selectedItem.attachment?.originalName ?? "오프라인 실물 부착 공간"}</strong><span>{getCategory(selectedItem.expense.category).label} · {selectedItem.expense.content}</span></div></div>
