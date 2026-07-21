@@ -23,13 +23,11 @@
         <span><strong>바른장부</strong><small>아웃리치 회계 도우미</small></span>
       </a>
       <nav aria-label="주요 메뉴">
-        <a class="nav-webapp" href="./app/">웹앱 시작</a>
+        <a class="nav-webapp" href="./app/">시작하기</a>
         <a href="./guide.html">처음 사용 가이드</a>
-        <a href="#install-help">설치 도움</a>
         <a href="#features">주요 기능</a>
         <a href="#screens">화면 보기</a>
         <a href="#safety">프로젝트 보관</a>
-        <a class="nav-download" href="#download">설치형 앱</a>
       </nav>
     </header>
 
@@ -40,7 +38,7 @@
           <h1>영수증부터 보고서까지,<br /><em>차근차근 완성하세요.</em></h1>
           <p>회계가 처음이어도 괜찮습니다. 수입과 지출을 흐름대로 입력하면 검산하고, 공식 Excel 회계보고서와 보기 좋은 영수증철까지 만들어 드립니다.</p>
           <div class="hero-actions">
-            <a class="button primary" href="./app/">웹앱 바로 시작</a>
+            <a class="button primary" href="./app/">시작하기</a>
             <a class="button secondary" href="./guide.html">처음 사용 가이드</a>
           </div>
           <ul class="hero-points" aria-label="제품 특징">
@@ -71,7 +69,7 @@
           <span class="eyebrow">NO INSTALLATION</span>
           <h2 id="web-launch-title">링크를 열면 바로 시작됩니다</h2>
           <p>회계 데이터와 영수증은 서버에 보내지 않고 이 브라우저 안에서 처리합니다. 작업 중에는 자동 복구하고, 중요한 시점에는 이미지까지 들어 있는 <code>.barun</code> 파일 하나로 백업하세요.</p>
-          <a class="button primary" href="./app/">바른장부 웹앱 열기 →</a>
+          <a class="button primary" href="./app/">시작하기 →</a>
         </div>
         <div class="web-launch-points">
           <div><span>01</span><strong>브라우저 자동 복구</strong><small>같은 기기와 브라우저에서 다시 열면 이어서 시작</small></div>
@@ -80,7 +78,15 @@
         </div>
       </section>
 
-      <section class="download-section section-shell" id="download">
+      <section class="desktop-download-section section-shell" id="download">
+        <details class="desktop-download-disclosure">
+          <summary>
+            <span>별도 설치가 꼭 필요한 경우</span>
+            <strong>Windows·macOS 설치형 앱</strong>
+            <small>웹앱을 사용할 수 없는 환경이라면 펼쳐서 다운로드와 실행 도움을 확인하세요.</small>
+            <b aria-hidden="true">＋</b>
+          </summary>
+          <div class="desktop-download-content">
         <div class="section-heading centered">
           <span class="eyebrow">DOWNLOAD</span>
           <h2>설치형 앱이 필요한 경우에만 받으세요</h2>
@@ -162,6 +168,8 @@
             <p><strong>공통 원칙</strong> Gatekeeper, Microsoft Defender, SmartScreen을 통째로 끄지 마세요. 공식 다운로드 페이지의 설치 파일만 예외로 허용하는 것이 안전합니다.</p>
           </div>
         </section>
+          </div>
+        </details>
       </section>
 
       <section class="features-section" id="features">
@@ -227,7 +235,7 @@
       <section class="steps-section section-shell">
         <div class="section-heading centered"><span class="eyebrow">GET STARTED</span><h2>세 단계면 시작할 수 있어요</h2></div>
         <ol class="steps">
-          <li><span>1</span><div><h3>웹앱 바로 열기</h3><p>설치 없이 Chrome, Edge, Safari 등 최신 브라우저에서 시작합니다.</p></div></li>
+          <li><span>1</span><div><h3>시작하기</h3><p>설치 없이 Chrome, Edge, Safari 등 최신 브라우저에서 시작합니다.</p></div></li>
           <li><span>2</span><div><h3>.barun 백업 내려받기</h3><p>중요한 시점마다 이미지까지 포함된 프로젝트 파일을 보관합니다.</p></div></li>
           <li><span>3</span><div><h3>수입부터 순서대로 입력</h3><p>앱의 안내를 따라 지출과 영수증을 등록하고 산출물을 저장합니다.</p></div></li>
         </ol>
@@ -240,12 +248,12 @@
           <details><summary>브라우저 데이터를 지우면 프로젝트가 사라지나요?<span>＋</span></summary><p>브라우저 자동 복구본은 지워질 수 있으므로, 중요한 시점마다 .barun 백업을 내려받으세요. 백업 파일에는 모든 이미지가 포함되어 어떤 지원 브라우저에서도 다시 열 수 있습니다.</p></details>
           <details><summary>한글 Excel과 영수증철 양식이 바뀌지는 않나요?<span>＋</span></summary><p>제공된 공식 템플릿 사본을 읽어 결과를 만들며 템플릿 자체에는 쓰지 않습니다. 금전출납부는 기존 서식을 유지하고 필요한 행만 같은 서식으로 늘립니다.</p></details>
           <details><summary>웹앱은 어떻게 업데이트되나요?<span>＋</span></summary><p>페이지를 다시 열면 배포된 최신 버전을 자동으로 받습니다. 업데이트 전에 중요한 프로젝트를 .barun 파일로 한 번 백업하면 더 안전합니다.</p></details>
-          <details><summary>첫 실행 때 보안 경고가 나오면 어떻게 하나요?<span>＋</span></summary><p>다운로드 영역의 <a href="#install-help">설치 도움</a>에서 macOS Gatekeeper와 Windows SmartScreen 대응 순서를 확인하세요. 운영체제의 보안 기능 전체를 끄지 말고, 이 공식 페이지에서 받은 바른장부 설치 파일만 한 번 허용해야 합니다.</p></details>
+          <details><summary>설치형 앱에서 보안 경고가 나오면 어떻게 하나요?<span>＋</span></summary><p>페이지 위쪽의 작은 <a href="#download">Windows·macOS 설치형 앱</a> 항목을 펼치면 Gatekeeper와 Windows SmartScreen 대응 순서를 확인할 수 있습니다. 운영체제의 보안 기능 전체를 끄지 마세요.</p></details>
         </div>
       </section>
 
       <section class="final-cta">
-        <div><span class="eyebrow">READY WHEN YOU ARE</span><h2>회계를 정리할 시간,<br />바른장부와 시작하세요.</h2><a class="button light" href="./app/">웹앱 바로 시작</a></div>
+        <div><span class="eyebrow">READY WHEN YOU ARE</span><h2>회계를 정리할 시간,<br />바른장부와 시작하세요.</h2><a class="button light" href="./app/">시작하기</a></div>
       </section>
     </main>
 
@@ -253,6 +261,7 @@
       <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 7.5c3.4-.7 6.2.1 9 2.1 2.8-2 5.6-2.8 9-2.1v17c-3.4-.7-6.2.1-9 2.1-2.8-2-5.6-2.8-9-2.1z"/><path d="M16 9.6v17"/></svg></span><span><strong>바른장부</strong><small>아웃리치 회계 도우미</small></span></div>
       <p>회계 데이터와 영수증을 서버에 저장하지 않는 로컬 우선 웹앱</p>
       <a href="./guide.html">처음 사용 가이드</a>
+      <a class="footer-desktop-link" href="#download">설치형 앱</a>
       <a href="https://github.com/Tangeroooo/accounting-assistant" target="_blank" rel="noreferrer">GitHub 저장소 ↗</a>
     </footer>
 
