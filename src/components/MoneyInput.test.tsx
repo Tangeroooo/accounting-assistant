@@ -24,4 +24,24 @@ describe("금액 입력", () => {
     expect(input.value).toBe("1,250,000");
     expect(onChange).toHaveBeenLastCalledWith(1_250_000);
   });
+
+  it("콤마 없이 입력한 숫자도 입력 즉시 세 자리 콤마로 다시 표시한다", () => {
+    const onChange = vi.fn();
+    render(<MoneyInput aria-label="금액" value={0} onChange={onChange} />);
+
+    const input = screen.getByRole("textbox", { name: "금액" }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "1250000", selectionStart: 7 } });
+
+    expect(input.value).toBe("1,250,000");
+    expect(onChange).toHaveBeenLastCalledWith(1_250_000);
+  });
+
+  it("저장값이 바깥에서 바뀌어도 표시값을 콤마 형식으로 동기화한다", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MoneyInput aria-label="금액" value={10_000} onChange={onChange} />);
+
+    rerender(<MoneyInput aria-label="금액" value={2_345_678} onChange={onChange} />);
+
+    expect((screen.getByRole("textbox", { name: "금액" }) as HTMLInputElement).value).toBe("2,345,678");
+  });
 });

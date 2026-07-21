@@ -30,6 +30,8 @@ import {
   Users,
   WalletCards,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -85,6 +87,17 @@ import ProjectOnboarding from "./components/ProjectOnboarding";
 
 type ViewId = "overview" | "accounting" | "receipts" | "settlements" | "settings";
 type ReceiptExportFormat = "pdf" | "docx";
+
+const RECEIPT_EDITOR_ZOOM_MIN = 0.5;
+const RECEIPT_EDITOR_ZOOM_MAX = 1.6;
+const RECEIPT_EDITOR_ZOOM_STEP = 0.1;
+
+function nextReceiptEditorZoom(current: number, delta: number) {
+  return Math.min(
+    RECEIPT_EDITOR_ZOOM_MAX,
+    Math.max(RECEIPT_EDITOR_ZOOM_MIN, Math.round((current + delta) * 10) / 10),
+  );
+}
 
 const navItems: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "진행 현황", icon: LayoutDashboard },
@@ -616,6 +629,7 @@ function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, 
   const [previewFormat, setPreviewFormat] = useState<ReceiptExportFormat | null>(null);
   const [fuelPasteArmed, setFuelPasteArmed] = useState(false);
   const [fuelPasteStatus, setFuelPasteStatus] = useState("");
+  const [editorZoom, setEditorZoom] = useState(1);
   const dragRef = useRef<{ attachmentId: string; x: number; y: number } | null>(null);
   const resizeRef = useRef<{
     target: "attachment" | "offline-holder";
@@ -637,6 +651,8 @@ function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, 
   const transportFuelEvidence = project.categoryEvidence.find((evidence) => evidence.category === "transport" && evidence.kind === "fuel-calculation");
   const receiptItems = buildReceiptBookItems(project);
   const receiptPages = layoutReceiptBookItems(receiptItems);
+  const receiptPageFrameStyle = { width: `${210 * editorZoom}mm`, height: `${297 * editorZoom}mm` };
+  const receiptPageContentStyle = { transform: `scale(${editorZoom})` };
   const selectedItem = receiptItems.find((item) => item.attachment?.id === selectedAttachmentId || item.offlineHolder?.id === selectedOfflineHolderId);
   const selectedPlacement = receiptPages.flat().find((placement) => placement.item.attachment?.id === selectedAttachmentId || placement.item.offlineHolder?.id === selectedOfflineHolderId);
   const selectedOfflineHolders = selectedItem?.evidenceId
@@ -761,7 +777,7 @@ function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, 
   };
   const handleEditorBackgroundPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
-    if (target.closest(".receipt-flow-item, .receipt-editor-controls")) return;
+    if (target.closest(".receipt-flow-item, .receipt-editor-controls, .receipt-output-floating-bar")) return;
     clearSelection();
   };
   const selectAttachment = (attachmentId: string) => {
@@ -878,12 +894,6 @@ function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, 
     setSelectedOfflineHolderId(holder.id);
   };
   return <section className="page receipt-page-wrap" onPointerDownCapture={handleEditorBackgroundPointerDown}><PageHeading eyebrow="RECEIPT BOOK EDITOR" title="영수증철 편집" description="그림을 선택한 뒤 테두리 핸들로 크기를 바꾸거나 자르기 모드에서 보이는 영역을 직접 조정합니다." />
-    <div className="receipt-output-floating-anchor no-print">
-      <div className="receipt-output-floating-bar">
-        <button className="button secondary receipt-preview-button" onClick={() => { clearSelection(); setPreviewFormat(exportFormat); }} disabled={outputBusy !== null || project.expenses.length === 0}><Eye size={17} /> 미리보기</button>
-        <ReceiptExportControl format={exportFormat} onFormatChange={onExportFormatChange} onExport={onExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} />
-      </div>
-    </div>
     <div className="receipt-toolbar no-print"><div><span className="legend online" /><strong>선택</strong><span>흰색 핸들로 그림·홀더 크기 조절</span></div><div><Crop size={14} /><strong>자르기</strong><span>검은 핸들로 영역 조절 · 그림 드래그로 위치 이동</span></div><div><strong>세로 우선 자동 배치</strong><span>위→아래로 채운 뒤 다음 열로 이동 · 크기 변경 즉시 재배치</span></div><div className="manual-reminder"><AlertCircle size={16} /> 지출 정보와 번호는 내보낸 파일에 넣지 않고 인쇄 후 직접 기입</div></div>
     {selectedItem && <div className="receipt-floating-toolbar-anchor no-print"><div className={`panel receipt-editor-controls active ${selectedItem.offlineHolder ? "holder-controls" : ""}`}>
       <div className="editor-selection">{selectedItem.offlineHolder ? <ReceiptText size={22} /> : <FileImage size={22} />}<div><strong>{selectedItem.attachment?.originalName ?? "오프라인 실물 부착 공간"}</strong><span>{getCategory(selectedItem.expense.category).label} · {selectedItem.expense.content}</span></div></div>
@@ -897,13 +907,32 @@ function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, 
         <button className="button ghost" onClick={() => { setCroppingAttachmentId(null); if (selectedAttachmentId) updateAttachmentLayout(selectedAttachmentId, (layout) => ({ ...DEFAULT_IMAGE_LAYOUT, aspectRatio: layout.aspectRatio ?? DEFAULT_IMAGE_LAYOUT.aspectRatio })); }}><RotateCcw size={16} /> 원본 비율 복원</button>
       </>}
     </div></div>}
-    {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && !((transportFuelEvidence?.attachments.length ?? 0) > 0 || (transportFuelEvidence?.offlineHolders?.length ?? 0) > 0)
-      && <div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} /><div className={`attachment-placeholder no-print ${fuelPasteArmed ? "paste-waiting" : ""}`}><Fuel size={35} /><strong>주유비 산정 증빙을 추가하세요</strong><span>교통비 영수증보다 먼저 배치되는 공통 자료입니다. 온라인 파일이나 인쇄 후 붙일 오프라인 칸을 여러 개 추가할 수 있습니다.</span><div className="attachment-placeholder-actions"><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={17} /> 온라인 파일 선택</button><button className={`button secondary clipboard-arm-button ${fuelPasteArmed ? "active" : ""}`} aria-pressed={fuelPasteArmed} onClick={() => { const next = !fuelPasteArmed; setFuelPasteArmed(next); setFuelPasteStatus(next ? "이제 ⌘V / Ctrl+V를 눌러 이미지를 붙여넣으세요." : "붙여넣기 대기를 취소했습니다."); }} disabled={!project.projectDirectory}><ClipboardPaste size={17} /> {fuelPasteArmed ? "붙여넣기 대기 중" : "클립보드 붙여넣기"}</button><button className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={17} /> 오프라인 부착칸</button></div>{fuelPasteStatus && <small className={fuelPasteArmed ? "paste-status active" : "paste-status"}>{fuelPasteStatus}</small>}{!project.projectDirectory && <small>온라인 파일은 프로젝트를 먼저 저장해야 첨부할 수 있습니다.</small>}</div></div>}
-    {receiptPages.map((placements, pageIndex) => <article className="receipt-sheet receipt-flow-sheet" key={`receipt-page-${pageIndex}`}>
-      <ReceiptHeader project={project} />
-      <div className="receipt-flow-canvas">{placements.map((placement) => <ReceiptTile key={placement.item.id} project={project} placement={placement} selected={placement.item.attachment?.id === selectedAttachmentId || placement.item.offlineHolder?.id === selectedOfflineHolderId} cropMode={placement.item.attachment?.id === croppingAttachmentId} onSelectAttachment={selectAttachment} onSelectOfflineHolder={selectOfflineHolder} onAspectRatio={registerAspectRatio} onPointerDown={startDrag} onPointerMove={moveDrag} onResizeStart={startResize} onResizeMove={moveResize} onPointerUp={finishPointerEdit} />)}</div>
-      <div className="receipt-page-count no-print">{pageIndex + 1} / {receiptPages.length}</div>
-    </article>)}
+    {project.expenses.length > 0 && <div className="receipt-editor-workspace-shell">
+      <div className="receipt-pages-stage" aria-label={`영수증철 편집 용지 ${Math.round(editorZoom * 100)}%`}>
+      {project.expenses.some((expense) => expense.category === "transport" && expense.isFuel) && !((transportFuelEvidence?.attachments.length ?? 0) > 0 || (transportFuelEvidence?.offlineHolders?.length ?? 0) > 0)
+        && <div className="receipt-page-zoom-frame" style={receiptPageFrameStyle}><div className="receipt-page-zoom-content" style={receiptPageContentStyle}><div className="receipt-sheet shared-evidence"><ReceiptHeader project={project} /><div className={`attachment-placeholder no-print ${fuelPasteArmed ? "paste-waiting" : ""}`}><Fuel size={35} /><strong>주유비 산정 증빙을 추가하세요</strong><span>교통비 영수증보다 먼저 배치되는 공통 자료입니다. 온라인 파일이나 인쇄 후 붙일 오프라인 칸을 여러 개 추가할 수 있습니다.</span><div className="attachment-placeholder-actions"><button className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={17} /> 온라인 파일 선택</button><button className={`button secondary clipboard-arm-button ${fuelPasteArmed ? "active" : ""}`} aria-pressed={fuelPasteArmed} onClick={() => { const next = !fuelPasteArmed; setFuelPasteArmed(next); setFuelPasteStatus(next ? "이제 ⌘V / Ctrl+V를 눌러 이미지를 붙여넣으세요." : "붙여넣기 대기를 취소했습니다."); }} disabled={!project.projectDirectory}><ClipboardPaste size={17} /> {fuelPasteArmed ? "붙여넣기 대기 중" : "클립보드 붙여넣기"}</button><button className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={17} /> 오프라인 부착칸</button></div>{fuelPasteStatus && <small className={fuelPasteArmed ? "paste-status active" : "paste-status"}>{fuelPasteStatus}</small>}{!project.projectDirectory && <small>온라인 파일은 프로젝트를 먼저 저장해야 첨부할 수 있습니다.</small>}</div></div></div></div>}
+      {receiptPages.map((placements, pageIndex) => <div className="receipt-page-zoom-frame" style={receiptPageFrameStyle} key={`receipt-page-${pageIndex}`}><div className="receipt-page-zoom-content" style={receiptPageContentStyle}><article className="receipt-sheet receipt-flow-sheet">
+        <ReceiptHeader project={project} />
+        <div className="receipt-flow-canvas">{placements.map((placement) => <ReceiptTile key={placement.item.id} project={project} placement={placement} selected={placement.item.attachment?.id === selectedAttachmentId || placement.item.offlineHolder?.id === selectedOfflineHolderId} cropMode={placement.item.attachment?.id === croppingAttachmentId} onSelectAttachment={selectAttachment} onSelectOfflineHolder={selectOfflineHolder} onAspectRatio={registerAspectRatio} onPointerDown={startDrag} onPointerMove={moveDrag} onResizeStart={startResize} onResizeMove={moveResize} onPointerUp={finishPointerEdit} />)}</div>
+        <div className="receipt-page-count no-print">{pageIndex + 1} / {receiptPages.length}</div>
+      </article></div></div>)}
+      </div>
+      <div className="receipt-output-floating-anchor no-print">
+        <div className="receipt-output-floating-bar">
+          <div className="receipt-zoom-tools" role="group" aria-label="영수증철 용지 확대 및 축소">
+            <div className="receipt-zoom-heading"><strong>용지 보기</strong><output aria-live="polite">{Math.round(editorZoom * 100)}%</output></div>
+            <div className="receipt-zoom-buttons">
+              <button className="icon-button" aria-label="영수증철 용지 축소" title="용지 축소" onClick={() => setEditorZoom((current) => nextReceiptEditorZoom(current, -RECEIPT_EDITOR_ZOOM_STEP))} disabled={editorZoom <= RECEIPT_EDITOR_ZOOM_MIN}><ZoomOut size={18} /></button>
+              <button className="receipt-zoom-reset" aria-label="영수증철 용지 배율 100%로 복원" title="100%로 복원" onClick={() => setEditorZoom(1)}>100%</button>
+              <button className="icon-button" aria-label="영수증철 용지 확대" title="용지 확대" onClick={() => setEditorZoom((current) => nextReceiptEditorZoom(current, RECEIPT_EDITOR_ZOOM_STEP))} disabled={editorZoom >= RECEIPT_EDITOR_ZOOM_MAX}><ZoomIn size={18} /></button>
+            </div>
+          </div>
+          <span className="receipt-floating-divider" aria-hidden="true" />
+          <button className="button secondary receipt-preview-button" onClick={() => { clearSelection(); setPreviewFormat(exportFormat); }} disabled={outputBusy !== null || project.expenses.length === 0}><Eye size={17} /> 미리보기</button>
+          <ReceiptExportControl format={exportFormat} onFormatChange={onExportFormatChange} onExport={onExport} busy={outputBusy} disabled={outputBusy !== null || project.expenses.length === 0} />
+        </div>
+      </div>
+    </div>}
     {project.expenses.length === 0 && <div className="panel empty-state"><ReceiptText size={40} /><strong>영수증철에 배치할 내역이 없습니다</strong><span>지출을 등록하면 순서대로 출력 페이지가 만들어집니다.</span></div>}
     {previewFormat && <ReceiptBookPreviewModal project={project} format={previewFormat} onClose={() => setPreviewFormat(null)} />}
   </section>;
