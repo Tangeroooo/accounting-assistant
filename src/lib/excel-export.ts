@@ -151,6 +151,18 @@ const expenseContent = (expense: Expense) => {
   return details ? `${taggedContent}_${details}` : taggedContent;
 };
 
+const wrappedLineCount = (value: string, charactersPerLine: number) =>
+  value.split("\n").reduce(
+    (lines, part) => lines + Math.max(1, Math.ceil([...part].length / charactersPerLine)),
+    0,
+  );
+
+const ledgerRowHeight = (expense: Expense) => {
+  const contentLines = wrappedLineCount(expenseContent(expense), 45);
+  const noteLines = expense.note ? wrappedLineCount(expense.note, 16) : 1;
+  return 16.5 * Math.max(1, contentLines, noteLines);
+};
+
 const formatKoreanDate = (date: string) => {
   if (!date) return "";
   const [year, month, day] = date.split("-").map(Number);
@@ -298,6 +310,11 @@ const ensureRow = (document: XmlDocument, sheetData: Element, rowIndex: number) 
   return row;
 };
 
+const setRowHeight = (row: Element, height: number) => {
+  row.setAttribute("ht", String(height));
+  row.setAttribute("customHeight", "1");
+};
+
 const appendCellOrdered = (row: Element, cell: Element) => {
   const number = columnNumber(cell.getAttribute("r") ?? "A1");
   const next = all<Element>(row, ":scope > c").find(
@@ -346,7 +363,6 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
         cellAt(document, range.total, column),
       ]),
     ),
-    capacity: range.total - range.start,
   }));
   const grandTotalSources = Object.fromEntries(
     ["A", "B", "C", "D", "E", "F"].map((column) => [column, cellAt(document, 47, column)]),
@@ -357,6 +373,8 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
     ),
   );
   const teamMinistryAutoNoteStyle = cellAt(document, 34, "M");
+  const dimension = document.querySelector("dimension");
+  const templateMaxRow = rangeInfo(dimension?.getAttribute("ref") ?? "A1").endRow;
 
   for (const row of all<Element>(sheetData, ":scope > row")) {
     for (const cell of all<Element>(row, ":scope > c")) {
@@ -381,7 +399,9 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   for (const [index, definition] of CATEGORY_DEFINITIONS.entries()) {
     const sources = styleSources[index];
     const expenses = project.expenses.filter((expense) => expense.category === definition.id);
-    const rowCount = Math.max(sources.capacity, expenses.length);
+    // 오른쪽 H:N의 샘플은 설명용일 뿐 제출용 A:F의 행 수를 결정하지 않는다.
+    // 각 항목에는 실제 지출(영수증) 건수만큼만 거래 행을 만든다.
+    const rowCount = expenses.length;
     const start = cursor;
     const total = start + rowCount;
     totalRows.push(total);
@@ -391,6 +411,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
       const row = ensureRow(document, sheetData, rowIndex);
       const style = offset === 0 ? sources.first : sources.middle;
       const expense = expenses[offset];
+      setRowHeight(row, ledgerRowHeight(expense));
       for (const column of ["A", "B", "C", "D", "E", "F"]) {
         const useAutoNoteStyle = column === "F"
           && offset === 0
@@ -427,16 +448,21 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
     }
 
     const totalRow = ensureRow(document, sheetData, total);
+    setRowHeight(totalRow, 16.5);
     for (const column of ["A", "B", "C", "D", "E", "F"]) {
       const cell = cloneCell(document, sources.total[column], column, total);
+      if (column === "A" && rowCount === 0) {
+        setText(document, cell, getCategory(definition.id).label);
+      }
       if (column === "B") setText(document, cell, "합계");
       if (column === "D") {
         const cached = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-        setFormula(document, cell, `SUM(D${start}:D${total - 1})`, cached);
+        if (rowCount === 0) setNumber(document, cell, 0);
+        else setFormula(document, cell, `SUM(D${start}:D${total - 1})`, cached);
       }
       appendCellOrdered(totalRow, cell);
     }
-    addMerge(`A${start}:A${total}`);
+    if (rowCount > 0) addMerge(`A${start}:A${total}`);
     addMerge(`B${total}:C${total}`);
     cursor = total + 1;
   }
@@ -444,6 +470,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   const grandTotalRow = cursor;
   const grandTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const row = ensureRow(document, sheetData, grandTotalRow);
+  setRowHeight(row, 16.5);
   for (const column of ["A", "B", "C", "D", "E", "F"]) {
     const cell = cloneCell(document, grandTotalSources[column], column, grandTotalRow);
     if (column === "A") setText(document, cell, "지출합계");
@@ -464,6 +491,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   footerSources.forEach((sources, index) => {
     const footerRowIndex = footerStart + index;
     const footerRow = ensureRow(document, sheetData, footerRowIndex);
+    setRowHeight(footerRow, 16.5);
     for (const column of ["A", "B", "C", "D", "E", "F"]) {
       const source = sources[column];
       if (!source) continue;
@@ -474,9 +502,11 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   addMerge(`A${footerStart + 1}:D${footerStart + 1}`);
 
   mergeCells.setAttribute("count", String(mergeCells.querySelectorAll("mergeCell").length));
-  const maxRow = Math.max(50, footerStart + 1);
-  document.querySelector("dimension")?.setAttribute("ref", `A1:N${maxRow}`);
-  return { grandTotalRow, maxRow };
+  const printMaxRow = footerStart + 1;
+  // 오른쪽 샘플은 그대로 보존되므로 시트 dimension은 그 범위를 포함해야 한다.
+  // 제출용 인쇄영역의 마지막 행은 별도로 printMaxRow를 사용한다.
+  dimension?.setAttribute("ref", `A1:N${Math.max(templateMaxRow, printMaxRow)}`);
+  return { grandTotalRow, printMaxRow };
 }
 
 function updatePrintArea(document: XmlDocument, maxRow: number) {
@@ -503,7 +533,7 @@ export async function createAccountingWorkbook(projectInput: ProjectData) {
   }
 
   const ledgerDocument = parseXml(await sheetFile.async("string"));
-  const { maxRow } = replaceLedger(ledgerDocument, project);
+  const { printMaxRow } = replaceLedger(ledgerDocument, project);
 
   const reportFile = zip.file("xl/worksheets/sheet2.xml");
   const summaryFile = zip.file("xl/worksheets/sheet1.xml");
@@ -536,7 +566,7 @@ export async function createAccountingWorkbook(projectInput: ProjectData) {
   zip.file("xl/sharedStrings.xml", serializeXml(sharedStringsDocument));
 
   const workbookDocument = parseXml(await workbookFile.async("string"));
-  updatePrintArea(workbookDocument, maxRow);
+  updatePrintArea(workbookDocument, printMaxRow);
   zip.file("xl/workbook.xml", serializeXml(workbookDocument));
 
   // 값이 바뀐 파일은 Excel이 전체 수식을 다시 계산하도록 기존 캐시 체인을 제거합니다.

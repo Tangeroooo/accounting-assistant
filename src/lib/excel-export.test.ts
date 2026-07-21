@@ -6,7 +6,7 @@ import JSZip from "jszip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAccountingWorkbook } from "./excel-export";
 import { applyDerivedState } from "./accounting";
-import { createEmptyProject, type Expense } from "../types";
+import { CATEGORY_DEFINITIONS, createEmptyProject, type Expense } from "../types";
 
 const templatePath = path.resolve(process.cwd(), "resources/accounting-template.xlsx");
 
@@ -44,7 +44,7 @@ const makeExpense = (index: number): Expense => ({
 afterEach(() => vi.unstubAllGlobals());
 
 describe("공식 템플릿 비파괴 내보내기", () => {
-  it("원본은 그대로 두고 금전출납부 부족 행만 늘리며 나머지 샘플 시트를 보존한다", async () => {
+  it("원본은 그대로 두고 금전출납부 행을 실제 영수증 건수에 맞추며 샘플을 보존한다", async () => {
     const originalBytes = await readFile(templatePath);
     const beforeHash = createHash("sha256").update(originalBytes).digest("hex");
     vi.stubGlobal("fetch", async () => new Response(originalBytes));
@@ -76,7 +76,6 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     }
 
     const ledger = await outputZip.file("xl/worksheets/sheet3.xml")!.async("string");
-    expect(ledger).toContain('mergeCell ref="F36:F38"');
     expect(ledger).toContain("SUM(D5:D11)");
     expect(ledger).not.toContain('t="inlineStr"');
 
@@ -91,6 +90,28 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     expect(sharedStringCellText(ledgerDocument, sharedValues, "C10")).toBe("[교통비] 교통비 7_택시 1회");
     expect(sharedValues).not.toContain("비공개 결제자");
     expect(sharedValues).not.toContain("비공개 계좌");
+
+    // 교통비 7건은 5~11행만 사용하고 12행에서 합산한다.
+    expect(ledgerDocument.querySelector('c[r="D12"] f')?.textContent).toBe("SUM(D5:D11)");
+    expect(ledgerDocument.querySelector('mergeCell[ref="A5:A12"]')).not.toBeNull();
+    // 지출이 없는 항목은 빈 거래행을 만들지 않고 합계행 하나만 둔다.
+    for (const row of [13, 14, 15, 16, 19, 20]) {
+      expect(ledgerDocument.querySelector(`c[r="D${row}"] f`)).toBeNull();
+      expect(ledgerDocument.querySelector(`c[r="D${row}"] v`)?.textContent).toBe("0");
+      expect(ledgerDocument.querySelector(`row[r="${row}"]`)?.getAttribute("ht")).toBe("16.5");
+    }
+    // 팀별사역비 1건은 거래행 17행과 합계행 18행으로 정확히 구성한다.
+    expect(ledgerDocument.querySelector('c[r="D18"] f')?.textContent).toBe("SUM(D17:D17)");
+    expect(ledgerDocument.querySelector('mergeCell[ref="A17:A18"]')).not.toBeNull();
+    expect(ledgerDocument.querySelector('mergeCell[ref="F17:F19"]')).toBeNull();
+    expect(Number(ledgerDocument.querySelector('row[r="17"]')?.getAttribute("ht"))).toBeGreaterThan(16.5);
+    // 오른쪽 샘플은 50행까지 남아도 제출용 A:F는 각주 24행에서 끝난다.
+    const leftReferences = [...ledgerDocument.querySelectorAll("sheetData c")]
+      .map((cell) => cell.getAttribute("r") ?? "")
+      .filter((reference) => /^[A-F]\d+$/.test(reference));
+    expect(Math.max(...leftReferences.map((reference) => Number(reference.match(/\d+$/)?.[0])))).toBe(24);
+    expect(ledgerDocument.querySelector('mergeCell[ref="H5:H10"]')).not.toBeNull();
+    expect(ledgerDocument.querySelector("dimension")?.getAttribute("ref")).toBe("A1:N50");
 
     let sharedReferenceCount = 0;
     for (const worksheetFile of outputZip.file(/xl\/worksheets\/sheet\d+\.xml/)) {
@@ -126,11 +147,62 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     expect(summary.querySelector('c[r="E26"] f')?.getAttribute("si")).toBe("3");
 
     const workbook = await outputZip.file("xl/workbook.xml")!.async("string");
-    expect(workbook).toContain("'국내-금전출납부'!$A$1:$F$52");
+    expect(workbook).toContain("'국내-금전출납부'!$A$1:$F$24");
     expect([...outputZip.file(/xl\/worksheets\/sheet\d+\.xml/)]).toHaveLength(6);
 
     const afterBytes = await readFile(templatePath);
     const afterHash = createHash("sha256").update(afterBytes).digest("hex");
     expect(afterHash).toBe(beforeHash);
+  });
+
+  it("모든 항목의 거래행을 항목별 영수증 건수와 정확히 일치시킨다", async () => {
+    const originalBytes = await readFile(templatePath);
+    vi.stubGlobal("fetch", async () => new Response(originalBytes));
+
+    const project = createEmptyProject();
+    const counts = [0, 1, 2, 3, 4, 5, 6, 7];
+    let expenseIndex = 1;
+    project.expenses = CATEGORY_DEFINITIONS.flatMap((definition, categoryIndex) =>
+      Array.from({ length: counts[categoryIndex] }, (_, receiptIndex) => ({
+        ...makeExpense(expenseIndex++),
+        category: definition.id,
+        date: `2026-07-${String(receiptIndex + 1).padStart(2, "0")}`,
+        receiptNumber: receiptIndex + 1,
+      })),
+    );
+
+    const outputZip = await JSZip.loadAsync(await createAccountingWorkbook(project));
+    const ledger = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet3.xml")!.async("string"),
+      "application/xml",
+    );
+
+    let cursor = 5;
+    CATEGORY_DEFINITIONS.forEach((_, categoryIndex) => {
+      const count = counts[categoryIndex];
+      const start = cursor;
+      const total = start + count;
+      const totalCell = ledger.querySelector(`c[r="D${total}"]`);
+
+      if (count === 0) {
+        expect(totalCell?.querySelector("f")).toBeNull();
+        expect(totalCell?.querySelector("v")?.textContent).toBe("0");
+        expect(ledger.querySelector(`mergeCell[ref="A${start}:A${total}"]`)).toBeNull();
+      } else {
+        expect(totalCell?.querySelector("f")?.textContent).toBe(`SUM(D${start}:D${total - 1})`);
+        expect(ledger.querySelector(`mergeCell[ref="A${start}:A${total}"]`)).not.toBeNull();
+      }
+      expect(ledger.querySelector(`mergeCell[ref="B${total}:C${total}"]`)).not.toBeNull();
+      cursor = total + 1;
+    });
+
+    const expectedFooterEnd = cursor + 3;
+    const leftReferences = [...ledger.querySelectorAll("sheetData c")]
+      .map((cell) => cell.getAttribute("r") ?? "")
+      .filter((reference) => /^[A-F]\d+$/.test(reference));
+    expect(Math.max(...leftReferences.map((reference) => Number(reference.match(/\d+$/)?.[0])))).toBe(expectedFooterEnd);
+
+    const workbook = await outputZip.file("xl/workbook.xml")!.async("string");
+    expect(workbook).toContain(`'국내-금전출납부'!$A$1:$F$${expectedFooterEnd}`);
   });
 });
