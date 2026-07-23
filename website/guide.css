@@ -101,6 +101,7 @@
 .field-explainer h3 { margin: 5px 0 6px; font-size: 16px; }
 .field-explainer p { margin: 0 0 12px; color: var(--muted); font-size: 11px; }
 .field-explainer code { padding: 7px 9px; display: block; color: #4d5a70; border-radius: 8px; background: #f3f5f8; font-family: inherit; font-size: 10px; }
+.field-explainer code + code { margin-top: 6px; }
 .category-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; }
 .category-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .category-table th { padding: 13px 15px; color: #6e788a; text-align: left; background: #f5f7fa; font-size: 10px; }

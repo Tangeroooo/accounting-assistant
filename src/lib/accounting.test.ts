@@ -199,6 +199,39 @@ describe("교육자료 기반 검산", () => {
     expect(validateProject(project).some((issue) => issue.id.endsWith("-fuel-original"))).toBe(true);
   });
 
+  it("보험증권 누락은 저장을 막는 오류가 아니라 확인용 주의로 표시한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [expense({
+      id: "insurance",
+      category: "misc",
+      content: "단체보험료_총27명",
+      receiptMode: "online-printable",
+      attachments: [{
+        id: "insurance-payment",
+        relativePath: "attachments/insurance-payment.png",
+        originalName: "보험료 결제내역.png",
+        mimeType: "image/png",
+        kind: "transfer-proof",
+      }],
+    })];
+
+    const insuranceIssue = validateProject(project)
+      .find((issue) => issue.id === "expense-insurance-insurance-certificate");
+    expect(insuranceIssue).toMatchObject({
+      severity: "warning",
+      title: "보험증권이 필요합니다",
+    });
+
+    project.expenses[0].attachments.push({
+      id: "insurance-certificate",
+      relativePath: "attachments/insurance-certificate.png",
+      originalName: "보험가입증명서.png",
+      mimeType: "image/png",
+      kind: "insurance-certificate",
+    });
+    expect(validateProject(project).some((issue) => issue.id === "expense-insurance-insurance-certificate")).toBe(false);
+  });
+
   it("여러 영수증에서 반복되는 같은 검토 규칙을 한 항목과 대상 건수로 요약한다", () => {
     const project = createEmptyProject();
     project.expenses = [

@@ -111,15 +111,46 @@ const navItems: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = 
 
 const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 
-const EXPENSE_CONTENT_EXAMPLES: Record<CategoryId, string> = {
-  transport: "선발대 차량 유류비(서울↔태안)",
-  lodging: "물·전기 사용료 포함_○○교회 수양관",
-  meals: "첫날 저녁 식사_돈까스*12개/김밥*24줄",
-  ministry: "마을잔치용품_포장지*1개/간식*20봉",
-  gifts: "교회 선물_키보드 페달*1개/케이블*3개",
-  teamMinistry: "전도물품_복음팔찌*130개/쇼핑백*3묶음",
-  offering: "○○교회 주일예배 감사헌금",
-  misc: "비상약_밴드*1팩/타이레놀*2팩 외 10개",
+const EXPENSE_CONTENT_EXAMPLES: Record<CategoryId, string[]> = {
+  transport: [
+    "버스대절비(서울 → 태안)",
+    "선발대 차량 유류비(서울 ↔ 태안)",
+    "선발대 차량 톨비(서울 ↔ 태안)",
+  ],
+  lodging: [
+    "물·전기 등 사용료 포함_○○교회 수양관 또는 ○○마을회관",
+    "수련원(5인실·6인실·20인실 등)",
+  ],
+  meals: [
+    "사전답사 간식_음료_카모마일*1잔/아메리카노*6잔/라떼*1잔",
+    "아침식사 재료 추가구입_탄산음료(1.5L, 1+1)*4묶음/맛김치1kg*2봉지/미역50g/얼음2.5kg*4봉지",
+    "팀전체 점심 식사_돈까스*12개/김밥*24개",
+  ],
+  ministry: [
+    "전도물품_초대장100장/직사각형스티커50매/원형스티커10장 제작",
+    "마을잔치용품_포장지10m*1개/스카치캔디*2봉/봉투200매입*1묶음/미니약과400g*2봉 외 3개",
+    "마을잔치사역_식재료_배추김치10kg*1박스/라면사리110g*12개/냉동오징어500g*1개/쌀5kg*1봉 외 10개",
+  ],
+  gifts: [
+    "사전답사 선물_목사님_과일*2팩",
+    "교회선물_키보드페달*1개/케이블5m*1개/케이블3m*2개",
+    "목사님 선물_허니스틱3종*30매",
+  ],
+  teamMinistry: [
+    "전도물품_복음팔찌130매(할인 2,330원 포함)",
+    "전도물품_쇼핑백40매*3묶음",
+    "전도물품_파스5개입*4개*8팩/파스50개입*2개*1팩/파스5개입*1개*2팩",
+  ],
+  offering: [
+    "태안 온누리교회",
+    "○○교회 주일예배 감사헌금",
+  ],
+  misc: [
+    "송금 이체수수료",
+    "선물구입 퀵비(양재 → 서빙고)",
+    "비상약_밴드*1팩/메디폼*1개/골무*1개/타이레놀*2팩/붕대*1포 외 10개",
+    "단체보험료_총27명",
+  ],
 };
 
 function clipboardImageFile(event: ClipboardEvent) {
@@ -1280,11 +1311,11 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
   const inlineAttachment = draft.receiptMode === "online-printable"
     ? draft.attachments.find((attachment) => attachment.id === inlineAttachmentId) ?? draft.attachments[0]
     : undefined;
-  const contentExample = EXPENSE_CONTENT_EXAMPLES[draft.category];
+  const contentExamples = EXPENSE_CONTENT_EXAMPLES[draft.category];
   const saveDraft = expenseForSaveFromEditor(expense, draft, contentEdited);
   return <><div className="modal-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="expense-drawer"><div className="drawer-header"><div><span className="eyebrow">EXPENSE</span><h2>{project.expenses.some((item) => item.id === expense.id) ? "지출 수정" : "새 지출 등록"}</h2></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="expense-editor-workspace"><ExpenseEvidencePane project={project} expense={draft} attachment={inlineAttachment} clipboardPasteArmed={clipboardTarget === "receipt"} onSelectAttachment={setInlineAttachmentId} onExpandAttachment={setPreviewAttachment} onAttach={attach} onArmClipboardPaste={() => armClipboardPaste("receipt")} /><div className="drawer-body">
     <div className={`editor-live-reconcile ${liveReconciliation.difference === 0 ? "balanced" : "unbalanced"}`}><div><span>수입</span><strong>{money(liveReconciliation.income.total)}</strong></div><i>−</i><div><span>이 지출 포함 총지출</span><strong>{money(liveReconciliation.expense.total)}</strong></div><i>−</i><div><span>환입액</span><strong>{money(liveReconciliation.returnAmount)}</strong></div><i>=</i><div><span>실시간 차액</span><strong>{money(liveReconciliation.difference)}</strong></div></div>
-    <div className="field-grid editor-grid"><label className="field"><span>항목</span><select value={draft.category} onChange={(event) => update("category", event.target.value as CategoryId)}>{CATEGORY_DEFINITIONS.map((category) => <option key={category.id} value={category.id}>{category.number}. {category.label}</option>)}</select></label><Field label="날짜" type="date" value={draft.date} onChange={(value) => update("date", value)} /><label className="field full expense-content-field"><span>내용</span><textarea value={draft.content} onChange={(event) => { setContentEdited(true); update("content", event.target.value); }} placeholder={`예: ${contentExample}`} /><small>어디에 왜 썼는지, 필요한 경우 품목·수량·대상까지 한 칸에 자세히 적으세요.</small><em>예: {contentExample}</em><small>항목명과 식사 인원은 Excel 저장 시 자동으로 붙습니다.</small></label><MoneyField label="금액" value={draft.amount} onChange={(value) => update("amount", value)} full={draft.category !== "meals" && draft.category !== "transport"} />{draft.category === "meals" && <Field label="식사 인원" type="number" value={String(draft.mealHeadcount || "")} onChange={(value) => update("mealHeadcount", Number(value))} />}{draft.category === "transport" && <label className="check-field"><input type="checkbox" checked={draft.isFuel} onChange={(event) => update("isFuel", event.target.checked)} /><Fuel size={17} /><span><strong>주유비 지출</strong><small>아래 공통 산정 증빙을 함께 검사합니다.</small></span></label>}<label className="field full note-field"><span>비고</span><textarea value={draft.note} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value, noteMode: "manual" }))} placeholder="공식 금전출납부 비고란에 표시할 내용만" />{draft.category === "teamMinistry" && draft.id === firstTeamMinistryId && <button type="button" className="note-auto-button" onClick={() => setDraft((current) => ({ ...current, note: automaticTeamMinistryNote, noteMode: "auto" }))}><RotateCcw size={13} /> 지원금·회비 비고 자동 작성</button>}</label></div>
+    <div className="field-grid editor-grid"><label className="field"><span>항목</span><select value={draft.category} onChange={(event) => update("category", event.target.value as CategoryId)}>{CATEGORY_DEFINITIONS.map((category) => <option key={category.id} value={category.id}>{category.number}. {category.label}</option>)}</select></label><Field label="날짜" type="date" value={draft.date} onChange={(value) => update("date", value)} /><div className="field full expense-content-field"><label htmlFor="expense-content">내용</label><textarea id="expense-content" value={draft.content} onChange={(event) => { setContentEdited(true); update("content", event.target.value); }} placeholder="지출 목적과 품목·규격·수량을 자세히 적으세요" /><small>어디에 왜 썼는지, 필요한 경우 품목·규격·수량·대상까지 한 칸에 자세히 적으세요.</small><div className="expense-content-examples"><strong><BookOpen size={13} /> 템플릿 작성 예시</strong><ol>{contentExamples.map((example, index) => <li key={example}><span>{index + 1}</span><code>{example}</code></li>)}</ol></div><small>항목명은 Excel 저장 시 자동으로 붙습니다. 식대간식비의 인원은 아래 ‘식사 인원’에 따로 입력하세요.</small></div><MoneyField label="금액" value={draft.amount} onChange={(value) => update("amount", value)} full={draft.category !== "meals" && draft.category !== "transport"} />{draft.category === "meals" && <Field label="식사 인원" type="number" value={String(draft.mealHeadcount || "")} onChange={(value) => update("mealHeadcount", Number(value))} />}{draft.category === "transport" && <label className="check-field"><input type="checkbox" checked={draft.isFuel} onChange={(event) => update("isFuel", event.target.checked)} /><Fuel size={17} /><span><strong>주유비 지출</strong><small>아래 공통 산정 증빙을 함께 검사합니다.</small></span></label>}<label className="field full note-field"><span>비고</span><textarea value={draft.note} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value, noteMode: "manual" }))} placeholder="공식 금전출납부 비고란에 표시할 내용만" />{draft.category === "teamMinistry" && draft.id === firstTeamMinistryId && <button type="button" className="note-auto-button" onClick={() => setDraft((current) => ({ ...current, note: automaticTeamMinistryNote, noteMode: "auto" }))}><RotateCcw size={13} /> 지원금·회비 비고 자동 작성</button>}</label></div>
     {draft.category === "teamMinistry" && <div className="support-allocation-field selected automatic"><span className="support-allocation-check"><Check size={14} /></span><CircleDollarSign size={20} /><span><strong>팀별사역지원금 사용액으로 자동 계산</strong><small>지원금보다 남은 금액은 환입하고, 초과분은 팀회비 충당액으로 자동 계산합니다.</small></span></div>}
     {draft.category === "transport" && draft.isFuel && <div className={`fuel-evidence-panel ${clipboardTarget === "fuel" ? "paste-waiting" : ""}`}>
       <div className="fuel-evidence-heading"><div><Fuel size={19} /><span><strong>공통 주유비 산정 증빙</strong><small>날짜가 더 빠른 일반 교통비 뒤, 첫 주유비 지출 바로 앞에 배치됩니다. 파일을 고르거나 붙여넣기 버튼을 누른 뒤 ⌘V / Ctrl+V를 누르세요.</small></span></div><div className="fuel-evidence-actions"><button type="button" className="button secondary" onClick={addFuelEvidence} disabled={!project.projectDirectory}><FileImage size={15} /> 온라인 파일</button><button type="button" className={`button secondary clipboard-arm-button ${clipboardTarget === "fuel" ? "active" : ""}`} aria-pressed={clipboardTarget === "fuel"} onClick={() => armClipboardPaste("fuel")} disabled={!project.projectDirectory}><ClipboardPaste size={15} /> {clipboardTarget === "fuel" ? "붙여넣기 대기 중" : "클립보드"}</button><button type="button" className="button secondary" onClick={addFuelOfflineHolder}><ReceiptText size={15} /> 오프라인 칸</button></div></div>

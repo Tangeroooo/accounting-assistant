@@ -327,11 +327,11 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
       if (!hasAttachment(item, ["insurance-certificate"])) {
         issues.push({
           id: `${prefix}-insurance-certificate`,
-          severity: "error",
+          severity: "warning",
           scope: "evidence",
           expenseId: item.id,
           title: "보험증권이 필요합니다",
-          detail: "여행자·단체보험은 결제 증빙과 함께 보험증권을 첨부해 주세요.",
+          detail: "여행자·단체보험은 결제 증빙과 보험가입증명서(보험증권)를 함께 준비했는지 최종 제출 전에 확인해 주세요.",
         });
       }
       if (
