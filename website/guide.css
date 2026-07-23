@@ -95,6 +95,7 @@
 .guide-list li { position: relative; padding-left: 20px; color: #59667c; font-size: 12px; }
 .guide-list li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 900; }
 .field-explainer { margin-top: 25px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 13px; }
+.field-explainer.single { grid-template-columns: 1fr; }
 .field-explainer article { padding: 22px; border: 1px solid var(--line); border-radius: 16px; }
 .field-explainer article > span { color: var(--orange-dark); font-size: 10px; font-weight: 900; }
 .field-explainer h3 { margin: 5px 0 6px; font-size: 16px; }

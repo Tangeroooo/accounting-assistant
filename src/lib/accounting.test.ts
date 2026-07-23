@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDerivedState, assignPayerFromExpense, incomeTotals, reconciliationSummary, settlementSummaries, sortAndNumberExpenses, summarizeValidationIssues, teamMinistryAutoNote, validateProject } from "./accounting";
+import { applyDerivedState, assignPayerFromExpense, expenseContentForEditor, expenseForSaveFromEditor, incomeTotals, reconciliationSummary, settlementSummaries, sortAndNumberExpenses, summarizeValidationIssues, teamMinistryAutoNote, validateProject } from "./accounting";
 import { createEmptyProject, type Expense } from "../types";
 
 const expense = (partial: Partial<Expense>): Expense => ({
@@ -23,6 +23,43 @@ const expense = (partial: Partial<Expense>): Expense => ({
 });
 
 describe("금전출납부 정렬과 번호", () => {
+  it("예전 내용과 세부 품목을 단일 내용 입력값으로 합친다", () => {
+    expect(expenseContentForEditor(expense({
+      content: "첫날 저녁 식사",
+      itemDetails: "돈까스*12개/김밥*24줄",
+    }))).toBe("첫날 저녁 식사_돈까스*12개/김밥*24줄");
+    expect(expenseContentForEditor(expense({
+      content: "렌터카 주유비",
+      itemDetails: "",
+    }))).toBe("렌터카 주유비");
+  });
+
+  it("단일 내용을 수정할 때만 예전 세부 품목 필드를 비운다", () => {
+    const original = expense({
+      content: "첫날 저녁 식사",
+      itemDetails: "돈까스*12개/김밥*24줄",
+    });
+    const draft = {
+      ...original,
+      content: "첫날 저녁 식사_돈까스*12개/김밥*24줄",
+      itemDetails: "",
+      amount: 25_000,
+    };
+
+    expect(expenseForSaveFromEditor(original, draft, false)).toMatchObject({
+      content: "첫날 저녁 식사",
+      itemDetails: "돈까스*12개/김밥*24줄",
+      amount: 25_000,
+    });
+    expect(expenseForSaveFromEditor(original, {
+      ...draft,
+      content: "둘째 날 저녁_비빔밥*12개",
+    }, true)).toMatchObject({
+      content: "둘째 날 저녁_비빔밥*12개",
+      itemDetails: "",
+    });
+  });
+
   it("항목 순서, 날짜 순서로 정렬하고 항목마다 번호를 다시 시작한다", () => {
     const result = sortAndNumberExpenses([
       expense({ id: "meal-late", category: "meals", date: "2026-07-03", createdOrder: 3 }),

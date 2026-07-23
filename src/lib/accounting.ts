@@ -50,6 +50,28 @@ export function sortAndNumberExpenses(expenses: Expense[]): Expense[] {
   });
 }
 
+/**
+ * 예전 프로젝트의 `content`와 `itemDetails`를 한 개의 내용 입력란에서
+ * 빠짐없이 보여준다. 저장 스키마의 레거시 필드는 과거 Excel 출력 호환을 위해 유지한다.
+ */
+export function expenseContentForEditor(expense: Pick<Expense, "content" | "itemDetails">) {
+  const content = expense.content.trim();
+  const itemDetails = expense.itemDetails?.trim();
+  if (!itemDetails) return content;
+  if (!content) return itemDetails;
+  return `${content}_${itemDetails}`;
+}
+
+export function expenseForSaveFromEditor(
+  original: Expense,
+  draft: Expense,
+  contentEdited: boolean,
+) {
+  return contentEdited
+    ? { ...draft, content: draft.content.trim(), itemDetails: "" }
+    : { ...draft, content: original.content, itemDetails: original.itemDetails };
+}
+
 export function expenseTotals(expenses: Expense[]) {
   const byCategory = Object.fromEntries(
     CATEGORY_DEFINITIONS.map((category) => [category.id, 0]),

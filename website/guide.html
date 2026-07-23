@@ -159,7 +159,7 @@
           <section class="guide-step" id="expense">
             <header><span class="step-number">3</span><div><small>ONE RECEIPT AT A TIME</small><h2>영수증을 보면서 지출을 한 건씩 등록하세요</h2><p>금전출납부의 기본 원칙은 영수증 1개당 지출 1줄입니다.</p></div></header>
             <div class="screen-guide reverse">
-              <img src="./assets/app-expense-edit.png?v=20260721-2" alt="가상 온라인 영수증을 왼쪽에서 보며 날짜, 내용, 금액과 세부 품목을 수정하는 화면" />
+              <img src="./assets/app-expense-edit.png?v=20260723-1" alt="가상 온라인 영수증을 왼쪽에서 보며 날짜, 내용과 금액을 수정하는 화면" />
               <div>
                 <ol class="numbered-actions">
                   <li><span>1</span><div><b>표의 + 또는 지출 등록</b><p>이미 등록한 행을 누르면 같은 편집 화면이 열립니다.</p></div></li>
@@ -169,18 +169,17 @@
               </div>
             </div>
             <figure class="guide-shot guide-shot-wide">
-              <img src="./assets/app-expenses.png?v=20260721-2" alt="교통비부터 잡비까지 항목별 날짜순으로 정리된 샘플 지출 내역 화면" />
+              <img src="./assets/app-expenses.png?v=20260723-1" alt="교통비부터 잡비까지 항목별 날짜순으로 정리된 샘플 지출 내역 화면" />
               <figcaption><b>저장하면 항목별·날짜순으로 자동 정리</b><span>영수증 번호, 실물·온라인 증빙, 앱 내부 정산 상태를 표에서 바로 확인하고 행을 눌러 수정합니다.</span></figcaption>
             </figure>
-            <div class="field-explainer">
-              <article><span>내용</span><h3>무엇을 왜 샀는지</h3><p>금전출납부의 대표 설명입니다.</p><code>[식대간식비] 첫날 저녁 식사</code></article>
-              <article><span>세부 품목</span><h3>영수증에 찍힌 상세 내역</h3><p>품목·수량·대상 등 검수에 필요한 정보입니다.</p><code>29명 · 김밥 29줄 · 생수 2박스</code></article>
+            <div class="field-explainer single">
+              <article><span>내용</span><h3>지출 목적과 구입 내역을 한 칸에</h3><p>어디에 왜 썼는지와 품목·수량·대상을 함께 적습니다. 항목명과 식사 인원은 Excel 저장 시 자동으로 붙습니다.</p><code>첫날 저녁 식사_돈까스*12개/김밥*24줄</code></article>
             </div>
             <div class="tip-box"><b>결제자가 팀원이면?</b><p>‘개인이 먼저 결제’를 선택하고 이름을 바로 적으세요. 미리 정산 대상자를 만들 필요가 없으며 이름은 공식 Excel이나 영수증철에 출력되지 않습니다.</p></div>
             <div class="check-panel">
               <h3>지출 한 건을 저장하기 전</h3>
               <label><input type="checkbox" data-guide-check="expense-core" /><span>항목·날짜·내용·금액이 영수증과 같습니다.</span></label>
-              <label><input type="checkbox" data-guide-check="expense-details" /><span>식비 인원 또는 필요한 상세 품목·목적을 적었습니다.</span></label>
+              <label><input type="checkbox" data-guide-check="expense-details" /><span>식비 인원과 필요한 품목·수량·대상을 내용에 적었습니다.</span></label>
               <label><input type="checkbox" data-guide-check="expense-proof" /><span>실물 원본 보유 또는 온라인 증빙 파일을 확인했습니다.</span></label>
             </div>
           </section>
@@ -195,7 +194,7 @@
                   <tr><td><span>2</span><b>숙박비</b></td><td>현지 숙박, 시설·교회 숙박</td><td>영수증이 어렵다면 현금 영수증 양식에 상세 정보와 서명</td></tr>
                   <tr><td><span>3</span><b>식대간식비</b></td><td>팀원 식사, 간식, 음료</td><td>먹은 인원을 반드시 입력하고 일회용품은 잡비로 분리</td></tr>
                   <tr><td><span>4</span><b>사역비</b></td><td>전도물품, 마을잔치, 프로그램 재료, 사역 중 식사</td><td>사역과 직접 연결된 목적을 내용에 명확히 기재</td></tr>
-                  <tr><td><span>5</span><b>선물구입비</b></td><td>목회자·성도·전도대상자 선물</td><td>선물 대상과 목적, 상세 품목을 충분히 기재</td></tr>
+                  <tr><td><span>5</span><b>선물구입비</b></td><td>목회자·성도·전도대상자 선물</td><td>선물 대상·목적·구입 내역을 내용에 충분히 기재</td></tr>
                   <tr><td><span>6</span><b>팀별사역비</b></td><td>팀별사역지원금으로 처리하는 사역 목적 지출</td><td>목회자 가정 선물 제외, 인정 가능한 증빙 필요</td></tr>
                   <tr><td><span>7</span><b>헌금</b></td><td>공식 헌금</td><td>현금 영수증 양식에 영수내용·주소·연락처·성명·서명</td></tr>
                   <tr><td><span>8</span><b>잡비</b></td><td>배송비, 상비약, 공간대여, 보험, 입장료, 수수료</td><td>여행자보험은 결제 증빙과 가입증명서를 함께 제출</td></tr>
@@ -209,7 +208,7 @@
             <div class="evidence-grid">
               <article><span class="evidence-type offline">실물</span><h3>오프라인 카드·현금 구매</h3><p>실물 카드영수증 또는 현금영수증 원본을 보관합니다. 앱에서는 ‘오프라인 실물’을 선택하고 필요한 부착칸 수를 만듭니다.</p><b>최종 출력 후 원본을 부착</b></article>
               <article><span class="evidence-type online">온라인</span><h3>온라인·쿠팡·네이버</h3><p>카드사 매출전표와 거래명세서 또는 주문상세정보를 함께 첨부합니다. 파일 선택이나 ‘클립보드’ 버튼 후 ⌘V/Ctrl+V로 넣을 수 있습니다.</p><b>날짜·상호·품목·총금액 확인</b></article>
-              <article><span class="evidence-type fuel">주유</span><h3>자차 주유비</h3><p>네이버 지도 등 거리·유류비 산정 화면과 실물 주유 영수증이 모두 필요합니다. 공통 산정 증빙은 지출마다 붙이지 않고 여러 장을 한 번 등록합니다.</p><b>교통비 영수증철 맨 앞에 배치</b></article>
+              <article><span class="evidence-type fuel">주유</span><h3>자차 주유비</h3><p>네이버 지도 등 거리·유류비 산정 화면과 실물 주유 영수증이 모두 필요합니다. 공통 산정 증빙은 지출마다 붙이지 않고 여러 장을 한 번 등록합니다.</p><b>첫 주유비 지출 바로 앞에 배치</b></article>
               <article><span class="evidence-type insurance">보험</span><h3>여행자보험</h3><p>카드매출전표 또는 계좌이체증에 보험가입증명서를 더합니다. 보험증권은 한 페이지 전체가 보이게 준비합니다.</p><b>결제 증빙 + 가입증명서</b></article>
               <article><span class="evidence-type cash">현금 양식</span><h3>헌금·일부 숙박비</h3><p>일반 영수증을 받기 어렵다면 제공된 현금 영수증 양식에 영수내용, 주소, 연락처, 성명과 서명을 자세히 적습니다.</p><b>출발 전에 양식을 출력</b></article>
               <article><span class="evidence-type tax">기타</span><h3>버스·대중교통·세금계산서</h3><p>세금계산서, 티켓과 카드전표, 카드매출전표와 견적서처럼 거래 내용을 확인할 수 있는 조합을 준비합니다.</p><b>영수증이 어려운 업체는 피하기</b></article>
@@ -220,7 +219,7 @@
           <section class="guide-step" id="review">
             <header><span class="step-number">4</span><div><small>RECONCILE AS YOU GO</small><h2>지출을 입력하면서 차액을 바로 확인하세요</h2><p>자동 검토는 같은 종류의 누락을 모아 보여주므로 경고 제목과 대상 영수증 번호를 함께 봅니다.</p></div></header>
             <figure class="guide-shot guide-shot-wide">
-              <img src="./assets/app-expenses.png?v=20260721-2" alt="자동 검토 요약과 항목별 날짜순 지출표가 함께 보이는 회계 입력 검토 화면" />
+              <img src="./assets/app-expenses.png?v=20260723-1" alt="자동 검토 요약과 항목별 날짜순 지출표가 함께 보이는 회계 입력 검토 화면" />
               <figcaption><b>같은 경고는 건별로 늘어놓지 않고 요약</b><span>확인할 대상 영수증 번호와 건수를 보고, 바로 아래 지출표에서 해당 행을 열 수 있습니다.</span></figcaption>
             </figure>
             <div class="reconcile-explanation">

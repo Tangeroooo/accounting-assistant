@@ -289,4 +289,59 @@ describe("영수증철 페이지 구성", () => {
     });
     expect(layoutReceiptBookItems(items)[0][1]).toMatchObject({ widthMm: 90, heightMm: 70 });
   });
+
+  it("공통 주유비 산정 증빙을 앞선 일반 교통비가 아니라 첫 주유비 바로 앞에 배치한다", () => {
+    const project = createEmptyProject();
+    project.expenses = [
+      { ...expense(1), category: "transport", date: "2026-07-01", content: "버스", isFuel: false },
+      {
+        ...expense(2),
+        category: "transport",
+        date: "2026-07-02",
+        content: "주유",
+        isFuel: true,
+        offlineHolders: [
+          { id: "fuel-receipt-1", widthMm: 80, heightMm: 60 },
+          { id: "fuel-receipt-2", widthMm: 80, heightMm: 60 },
+        ],
+      },
+      { ...expense(3), category: "transport", date: "2026-07-03", content: "택시", isFuel: false },
+    ];
+    project.categoryEvidence = [{
+      id: "fuel-evidence",
+      category: "transport",
+      kind: "fuel-calculation",
+      title: "주유비 산정 증빙",
+      attachments: [
+        { id: "fuel-evidence-1", relativePath: "attachments/fuel-1.png", originalName: "fuel-1.png", mimeType: "image/png", kind: "other" },
+        { id: "fuel-evidence-2", relativePath: "attachments/fuel-2.png", originalName: "fuel-2.png", mimeType: "image/png", kind: "other" },
+      ],
+      offlineHolders: [
+        { id: "fuel-evidence-offline-1", widthMm: 90, heightMm: 70 },
+        { id: "fuel-evidence-offline-2", widthMm: 90, heightMm: 70 },
+      ],
+    }];
+
+    const items = buildReceiptBookItems(project);
+    expect(items.map((item) => item.evidenceId ? `evidence:${item.receiptSequence}` : `${item.expense.content}:${item.receiptSequence}`)).toEqual([
+      "버스:1",
+      "evidence:1",
+      "evidence:2",
+      "evidence:3",
+      "evidence:4",
+      "주유:1",
+      "주유:2",
+      "택시:1",
+    ]);
+    expect(layoutReceiptBookItems(items).flat().map(({ item }) => item.evidenceId ? "evidence" : item.expense.content)).toEqual([
+      "버스",
+      "evidence",
+      "evidence",
+      "evidence",
+      "evidence",
+      "주유",
+      "주유",
+      "택시",
+    ]);
+  });
 });
