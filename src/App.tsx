@@ -621,6 +621,8 @@ function AccountingView({ project, incomes, totals, issues, updateProject, onAdd
   onDelete: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<CategoryId | "all">("all");
+  const [incomeExpanded, setIncomeExpanded] = useState(true);
+  const [reviewExpanded, setReviewExpanded] = useState(true);
   const reviewIssues = useMemo(() => summarizeValidationIssues(project, issues), [project, issues]);
   const errorIssueCount = issues.filter((item) => item.severity === "error").length;
   const warningIssueCount = issues.filter((item) => item.severity === "warning").length;
@@ -649,13 +651,39 @@ function AccountingView({ project, incomes, totals, issues, updateProject, onAdd
     { type: "flowing" as const, title: "재정플로잉", amount: incomes.flowing },
   ];
   return <section className="page accounting-page"><PageHeading eyebrow="ACCOUNTING & REVIEW" title="회계 입력·검토" description="수입, 지출, 검산과 누락 검토를 한 화면에서 확인합니다." />
-    <div className="panel unified-income-panel"><div className="panel-heading"><div><span className="eyebrow">INCOME</span><h2>수입 관리</h2></div><strong className="income-total-inline">총 {money(incomes.total)}</strong></div>
-      <div className="dues-equation"><label><span>1인당 회비</span><div><MoneyInput value={project.duesPerPerson} onChange={(value) => updateProject((current) => ({ ...current, duesPerPerson: value }))} /><em>원</em></div></label><b>×</b><label><span>인원수</span><div><input type="number" min="0" value={project.meta.headcount || ""} onChange={(event) => updateProject((current) => ({ ...current, meta: { ...current.meta, headcount: Math.max(0, Number(event.target.value) || 0) } }))} /><em>명</em></div></label><b>=</b><div className="dues-result"><span>회비 합계</span><strong>{money(incomes.dues)}</strong></div></div>
-      <div className="other-income-grid">{otherIncomes.map((source) => <label key={source.type}><span>{source.title}</span><div><MoneyInput value={source.amount} onChange={(value) => setIncomeAmount(source.type, value)} /><em>원</em></div></label>)}</div>
+    <div className={`panel unified-income-panel collapsible-panel ${incomeExpanded ? "expanded" : "collapsed"}`}>
+      <div className="panel-heading">
+        <div><span className="eyebrow">INCOME</span><h2>수입 관리</h2></div>
+        <div className="collapsible-panel-summary">
+          <strong className="income-total-inline">총 {money(incomes.total)}</strong>
+          <button type="button" className="panel-collapse-toggle" aria-label={`수입 관리 ${incomeExpanded ? "접기" : "펼치기"}`} aria-expanded={incomeExpanded} aria-controls="income-management-content" onClick={() => setIncomeExpanded((expanded) => !expanded)}>
+            <span>{incomeExpanded ? "접기" : "펼치기"}</span><ChevronDown size={17} />
+          </button>
+        </div>
+      </div>
+      {incomeExpanded && <div id="income-management-content" className="collapsible-panel-content">
+        <div className="dues-equation"><label><span>1인당 회비</span><div><MoneyInput value={project.duesPerPerson} onChange={(value) => updateProject((current) => ({ ...current, duesPerPerson: value }))} /><em>원</em></div></label><b>×</b><label><span>인원수</span><div><input type="number" min="0" value={project.meta.headcount || ""} onChange={(event) => updateProject((current) => ({ ...current, meta: { ...current.meta, headcount: Math.max(0, Number(event.target.value) || 0) } }))} /><em>명</em></div></label><b>=</b><div className="dues-result"><span>회비 합계</span><strong>{money(incomes.dues)}</strong></div></div>
+        <div className="other-income-grid">{otherIncomes.map((source) => <label key={source.type}><span>{source.title}</span><div><MoneyInput value={source.amount} onChange={(value) => setIncomeAmount(source.type, value)} /><em>원</em></div></label>)}</div>
+      </div>}
     </div>
     <div className={`support-return-card ${teamMinistryExcess > 0 ? "funded" : reconciliation.returnAmount > 0 ? "returning" : "used"}`}><div className="support-return-title"><span><CircleDollarSign size={18} /></span><div><strong>팀별사역지원금 사용 현황</strong><small>{teamMinistryExcess > 0 ? `지원금 초과 ${money(teamMinistryExcess)}은 팀회비로 자동 충당됩니다.` : "6. 팀별사역비 항목으로 등록한 지출을 지원금 사용액으로 계산합니다."}</small></div></div><div className="support-return-formula"><span><small>팀별사역지원금</small><strong>{money(reconciliation.income.teamSupport)}</strong></span><i>−</i><span><small>6. 팀별사역비</small><strong>{money(reconciliation.teamMinistryAmount)}</strong></span><i>=</i><span className="support-return-result"><small>환입액 (최소 0원)</small><strong>{money(reconciliation.returnAmount)}</strong></span>{teamMinistryExcess > 0 && <span className="support-dues-used"><small>팀회비 자동 충당</small><strong>{money(teamMinistryExcess)}</strong></span>}</div></div>
-    <div className="reconcile-card live-reconcile"><div><span>총수입</span><strong>{money(reconciliation.income.total)}</strong></div><i>−</i><div><span>총지출</span><strong>{money(reconciliation.expense.total)}</strong></div><i>−</i><div><span>환입액</span><strong>{money(reconciliation.returnAmount)}</strong></div><i>=</i><div className={reconciliation.difference === 0 ? "balanced" : "unbalanced"}><span>실시간 검산 차액</span><strong>{money(reconciliation.difference)}</strong></div><div className={`balance-status ${reconciliation.difference === 0 ? "ok" : "warn"}`}>{reconciliation.difference === 0 ? <Check size={18} /> : <AlertCircle size={18} />}{reconciliation.difference === 0 ? "일치" : "확인 필요"}</div></div>
-    <div className="panel inline-review-panel"><div className="panel-heading"><div><span className="eyebrow">AUTOMATIC REVIEW</span><h2>자동 검토</h2></div><div className="severity-summary"><span className="error">오류 {errorGroupCount}종{errorIssueCount > errorGroupCount ? ` · ${errorIssueCount}건` : ""}</span><span className="warning">주의 {warningGroupCount}종{warningIssueCount > warningGroupCount ? ` · ${warningIssueCount}건` : ""}</span></div></div><div className="issue-list review-grid">{reviewIssues.map((issue) => <div className="issue-item" key={issue.id}><span className={issue.severity}><AlertCircle size={17} /></span><div><div className="issue-title-row"><strong>{issue.title}</strong>{issue.count > 1 && <em>{issue.count}건 요약</em>}</div><p>{issue.detail}</p>{issue.targetSummary && <p className="issue-target-summary">{issue.targetSummary}</p>}</div></div>)}{reviewIssues.length === 0 && <div className="empty-state compact"><BadgeCheck size={30} /><strong>자동 검사를 모두 통과했습니다</strong><span>수입과 지출, 증빙 및 정산 검산이 일치합니다.</span></div>}</div></div>
+    <div className="reconcile-floating-anchor">
+      <div className="reconcile-card live-reconcile floating-reconcile"><div><span>총수입</span><strong>{money(reconciliation.income.total)}</strong></div><i>−</i><div><span>총지출</span><strong>{money(reconciliation.expense.total)}</strong></div><i>−</i><div><span>환입액</span><strong>{money(reconciliation.returnAmount)}</strong></div><i>=</i><div className={reconciliation.difference === 0 ? "balanced" : "unbalanced"}><span>실시간 검산 차액</span><strong>{money(reconciliation.difference)}</strong></div><div className={`balance-status ${reconciliation.difference === 0 ? "ok" : "warn"}`}>{reconciliation.difference === 0 ? <Check size={18} /> : <AlertCircle size={18} />}{reconciliation.difference === 0 ? "일치" : "확인 필요"}</div></div>
+    </div>
+    <div className={`panel inline-review-panel collapsible-panel ${reviewExpanded ? "expanded" : "collapsed"}`}>
+      <div className="panel-heading">
+        <div><span className="eyebrow">AUTOMATIC REVIEW</span><h2>자동 검토</h2></div>
+        <div className="collapsible-panel-summary">
+          <div className="severity-summary"><span className="error">오류 {errorGroupCount}종{errorIssueCount > errorGroupCount ? ` · ${errorIssueCount}건` : ""}</span><span className="warning">주의 {warningGroupCount}종{warningIssueCount > warningGroupCount ? ` · ${warningIssueCount}건` : ""}</span></div>
+          <button type="button" className="panel-collapse-toggle" aria-label={`자동 검토 ${reviewExpanded ? "접기" : "펼치기"}`} aria-expanded={reviewExpanded} aria-controls="automatic-review-content" onClick={() => setReviewExpanded((expanded) => !expanded)}>
+            <span>{reviewExpanded ? "접기" : "펼치기"}</span><ChevronDown size={17} />
+          </button>
+        </div>
+      </div>
+      {reviewExpanded && <div id="automatic-review-content" className="collapsible-panel-content">
+        <div className="issue-list review-grid">{reviewIssues.map((issue) => <div className="issue-item" key={issue.id}><span className={issue.severity}><AlertCircle size={17} /></span><div><div className="issue-title-row"><strong>{issue.title}</strong>{issue.count > 1 && <em>{issue.count}건 요약</em>}</div><p>{issue.detail}</p>{issue.targetSummary && <p className="issue-target-summary">{issue.targetSummary}</p>}</div></div>)}{reviewIssues.length === 0 && <div className="empty-state compact"><BadgeCheck size={30} /><strong>자동 검사를 모두 통과했습니다</strong><span>수입과 지출, 증빙 및 정산 검산이 일치합니다.</span></div>}</div>
+      </div>}
+    </div>
     <div className="ledger-section-heading"><div><span className="eyebrow">EXPENSE LEDGER</span><h2>지출 내역</h2><p>같은 항목 안에서 날짜순으로 정렬되고 영수증 번호는 항목마다 다시 시작합니다.</p></div><div className="ledger-heading-actions"><strong>{project.expenses.length}건 · {money(totals.total)}</strong><button className="button accent" onClick={onAdd}><Plus size={17} /> 지출 등록</button></div></div>
     <div className="filter-strip no-print"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>전체 <b>{project.expenses.length}</b></button>{CATEGORY_DEFINITIONS.map((category) => <button key={category.id} className={filter === category.id ? "active" : ""} onClick={() => setFilter(category.id)}>{category.label} <b>{project.expenses.filter((expense) => expense.category === category.id).length}</b></button>)}</div>
     <div className="panel table-panel"><table className="ledger-table"><thead><tr><th>항목</th><th>날짜</th><th>내용</th><th className="numeric">금액</th><th>번호</th><th>증빙</th><th>내부 정산</th><th className="actions"><button className="ledger-table-add no-print" aria-label="표에서 지출 등록" title="지출 등록" onClick={onAdd}><Plus size={16} /></button></th></tr></thead><tbody>
