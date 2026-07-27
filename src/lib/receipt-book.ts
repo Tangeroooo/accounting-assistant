@@ -147,25 +147,11 @@ export function receiptWatermarkDisplayLabel(item: ReceiptBookItem) {
 
 export function offlinePlaceholderLabel(item: ReceiptBookItem) {
   if (item.evidenceId) {
-    const holders = item.expense.offlineHolders ?? [];
-    const index = item.offlineHolder
-      ? holders.findIndex((holder) => holder.id === item.offlineHolder?.id)
-      : -1;
-    return holders.length > 1 && index >= 0
-      ? `주유비 산정 증빙 · ${index + 1}/${holders.length}`
-      : "주유비 산정 증빙";
+    return `주유비 산정 증빙-${item.receiptSequence}`;
   }
 
-  const category = getCategory(item.expense.category);
   const receiptNumber = item.expense.receiptNumber ?? "?";
-  const holders = offlineHoldersForExpense(item.expense);
-  const index = item.offlineHolder
-    ? holders.findIndex((holder) => holder.id === item.offlineHolder?.id)
-    : -1;
-  const receiptCode = `영수증 ${category.number}-${receiptNumber}`;
-  return holders.length > 1 && index >= 0
-    ? `${receiptCode} · ${index + 1}/${holders.length}`
-    : receiptCode;
+  return `영수증 ${receiptNumber}-${item.receiptSequence}`;
 }
 
 const formatCentimeters = (millimeters: number) =>

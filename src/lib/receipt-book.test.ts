@@ -221,23 +221,27 @@ describe("영수증철 페이지 구성", () => {
       offlineHolders: [
         { id: "holder-1", widthMm: 50, heightMm: 90 },
         { id: "holder-2", widthMm: 120, heightMm: 45 },
+        { id: "holder-3", widthMm: 70, heightMm: 30 },
       ],
     }];
     const items = buildReceiptBookItems(project);
-    expect(items.map((item) => item.offlineHolder?.id)).toEqual(["holder-1", "holder-2"]);
+    expect(items.map((item) => item.offlineHolder?.id)).toEqual(["holder-1", "holder-2", "holder-3"]);
     expect(layoutReceiptBookItems(items)[0]).toMatchObject([
       { widthMm: 50, heightMm: 90 },
       { widthMm: 120, heightMm: 45 },
+      { widthMm: 70, heightMm: 30 },
     ]);
     expect(items.map(offlinePlaceholderLabel)).toEqual([
-      "영수증 3-1 · 1/2",
-      "영수증 3-1 · 2/2",
+      "영수증 1-1",
+      "영수증 1-2",
+      "영수증 1-3",
     ]);
     expect(items.map(exportedOfflinePlaceholderLabel)).toEqual([
       "식대간식비-1-1",
       "식대간식비-1-2",
+      "식대간식비-1-3",
     ]);
-    expect(items.map(receiptAmountLabel)).toEqual(["10,000원", undefined]);
+    expect(items.map(receiptAmountLabel)).toEqual(["10,000원", undefined, undefined]);
   });
 
   it("항목이 바뀌면 남은 공간과 관계없이 새 페이지에서 시작한다", () => {
