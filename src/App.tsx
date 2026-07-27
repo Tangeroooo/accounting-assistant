@@ -1077,6 +1077,9 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   const holderDimensionsLabel = offlineHolder ? offlineHolderDimensionsLabel(offlineHolder) : "";
   const offlineGuideItemName = evidenceId ? "증빙" : "영수증";
   const compactOfflineGuide = Boolean(offlineHolder && (placement.widthMm < 60 || placement.heightMm < 45));
+  const holderDimensionsStyle = offlineHolder ? {
+    fontSize: `${Math.min(14, watermarkFontSizePx(holderDimensionsLabel, placement.widthMm, placement.heightMm))}px`,
+  } as React.CSSProperties : undefined;
   const holderGuideStyle = offlineHolder ? {
     "--offline-guide-size": `${Math.max(5, Math.min(9, placement.widthMm / 10, placement.heightMm / 8))}px`,
     "--offline-guide-pad-y": `${Math.max(0.5, Math.min(1.4, placement.heightMm / 50))}mm`,
@@ -1090,10 +1093,13 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
     {cropMode && attachment && <PrintableAttachment project={project} attachment={attachment} alt="자르기 중인 원본 그림" frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} ghost />}
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
       {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>이 라벨은 내보낸 PDF·Word에는 포함되지 않습니다</small></div>}
+      {offlineHolder && <span className={`offline-holder-dimensions no-print ${compactOfflineGuide ? "compact" : ""}`} style={holderDimensionsStyle}>{holderDimensionsLabel}</span>}
       {offlineHolder && <div className={`offline-holder-guide no-print ${compactOfflineGuide ? "compact" : ""}`} style={holderGuideStyle}>
-        <strong>{holderDimensionsLabel}</strong>
-        <span>{compactOfflineGuide ? "실물 크기에 맞추세요" : `실제 ${offlineGuideItemName}과 최대한 비슷한 크기로 맞추세요`}</span>
-        <small>{compactOfflineGuide ? `접지 말고 1-2, 1-3 추가` : `큰 ${offlineGuideItemName}은 접지 말고, 조각 수만큼 ${offlineGuideItemName} 개수를 추가하세요 (1-1, 1-2…)`}</small>
+        <AlertCircle size={compactOfflineGuide ? 9 : 13} />
+        <span>
+          <strong>{compactOfflineGuide ? "실물 크기에 맞추세요" : `실제 ${offlineGuideItemName} 크기에 최대한 맞추세요`}</strong>
+          <small>{compactOfflineGuide ? `접지 말고 1-2, 1-3 추가` : `큰 ${offlineGuideItemName}은 접지 말고, 조각 수만큼 ${offlineGuideItemName}을 추가하세요 (1-1, 1-2…)`}</small>
+        </span>
       </div>}
       {offlineHolder
         ? <div className="physical-placeholder"><strong>{offlinePlaceholderLabel(item)}</strong>{amountLabel && <span className="physical-placeholder-amount">{amountLabel}</span>}<small>{evidenceId ? "산정 증빙을 중앙에 붙이세요" : "실물 영수증을 중앙에 붙이세요"}</small></div>
@@ -1383,11 +1389,14 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
     </div>
     <div className="editor-section internal-section"><div className="section-title"><div><span>누가 결제했나요? <em>앱 내부 전용</em></span><small>기본은 팀비입니다. 팀원이 먼저 냈을 때만 이름을 입력하세요.</small></div></div><div className="choice-cards payment"><button className={draft.paymentSource === "team" ? "selected" : ""} onClick={() => update("paymentSource", "team")}><WalletCards size={20} /><span><strong>팀비로 결제</strong><small>별도 정산 없음</small></span></button><button className={draft.paymentSource === "personal" ? "selected" : ""} onClick={() => update("paymentSource", "personal")}><Users size={20} /><span><strong>개인이 먼저 결제</strong><small>나중에 돌려줄 금액</small></span></button></div>{draft.paymentSource === "personal" && <div className="payer-inline"><label className="field"><span>먼저 결제한 사람</span><input list="known-payers" value={payerName} onChange={(event) => { const name = event.target.value; setPayerName(name); const existing = project.people.find((person) => person.name === name); update("payerId", existing?.id); }} placeholder="이름을 바로 입력하세요" /><datalist id="known-payers">{project.people.filter((person) => person.name.trim()).map((person) => <option value={person.name} key={person.id} />)}</datalist><small>{project.people.some((person) => person.name === payerName) ? "기존 정산 대상자를 선택했습니다." : payerName.trim() ? "새 이름은 내역 반영 시 자동 등록됩니다." : "설정에서 미리 추가할 필요가 없습니다."}</small></label><div className="field-grid settlement-fields"><MoneyField label="돌려줄 금액" value={draft.settlementTargetAmount || draft.amount} onChange={(value) => update("settlementTargetAmount", value)} /><MoneyField label="이미 돌려준 금액" value={draft.settledAmount} onChange={(value) => update("settledAmount", value)} /></div></div>}<div className="internal-caption"><BadgeCheck size={15} /> 이름과 정산 정보는 공식 Excel과 영수증철에 표시되지 않습니다.</div></div>
   </div></div><div className="drawer-footer">
-    <div id="expense-save-requirements" className={`expense-save-requirements ${canSaveExpense ? "complete" : "incomplete"}`} role="status" aria-live="polite">
-      {canSaveExpense ? <BadgeCheck size={18} /> : <AlertCircle size={18} />}
-      <span><strong>{canSaveExpense ? "필수 정보 입력 완료" : "내역 반영 전에 입력해 주세요"}</strong><small>{canSaveExpense ? "이제 내역을 반영할 수 있습니다." : missingRequiredFields.join(" · ")}</small></span>
+    <div className="drawer-footer-actions">
+      <button className="button ghost" onClick={onClose}>취소</button>
+      <div id="expense-save-requirements" className={`expense-save-requirements ${canSaveExpense ? "complete" : "incomplete"}`} role="status" aria-live="polite">
+        {canSaveExpense ? <BadgeCheck size={18} /> : <AlertCircle size={18} />}
+        <span><strong>{canSaveExpense ? "필수 정보 입력 완료" : "내역 반영 전에 입력해 주세요"}</strong><small>{canSaveExpense ? "이제 내역을 반영할 수 있습니다." : missingRequiredFields.join(" · ")}</small></span>
+      </div>
+      <button className="button accent" onClick={() => onSave(saveDraft, payerName)} disabled={!canSaveExpense} aria-describedby="expense-save-requirements"><Check size={17} /> 내역 반영</button>
     </div>
-    <div className="drawer-footer-actions"><button className="button ghost" onClick={onClose}>취소</button><button className="button accent" onClick={() => onSave(saveDraft, payerName)} disabled={!canSaveExpense} aria-describedby="expense-save-requirements"><Check size={17} /> 내역 반영</button></div>
   </div></div></div>{previewAttachment && <AttachmentPreviewModal project={project} attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />}</>;
 }
 
