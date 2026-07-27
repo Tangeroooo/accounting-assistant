@@ -1077,11 +1077,13 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   const holderDimensionsLabel = offlineHolder ? offlineHolderDimensionsLabel(offlineHolder) : "";
   const offlineGuideItemName = evidenceId ? "증빙" : "영수증";
   const compactOfflineGuide = Boolean(offlineHolder && (placement.widthMm < 60 || placement.heightMm < 45));
+  const holderGuideFontSize = Math.max(5.5, Math.min(11, placement.widthMm / 6, placement.heightMm / 4.5));
   const holderDimensionsStyle = offlineHolder ? {
     fontSize: `${Math.min(14, watermarkFontSizePx(holderDimensionsLabel, placement.widthMm, placement.heightMm))}px`,
+    bottom: compactOfflineGuide ? undefined : `calc(6mm + ${holderGuideFontSize * 4.5}px)`,
   } as React.CSSProperties : undefined;
   const holderGuideStyle = offlineHolder ? {
-    "--offline-guide-size": `${Math.max(5, Math.min(9, placement.widthMm / 10, placement.heightMm / 8))}px`,
+    "--offline-guide-size": `${holderGuideFontSize}px`,
     "--offline-guide-pad-y": `${Math.max(0.5, Math.min(1.4, placement.heightMm / 50))}mm`,
     "--offline-guide-pad-x": `${Math.max(0.8, Math.min(2, placement.widthMm / 50))}mm`,
   } as React.CSSProperties : undefined;
@@ -1095,10 +1097,13 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
       {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>이 라벨은 내보낸 PDF·Word에는 포함되지 않습니다</small></div>}
       {offlineHolder && <span className={`offline-holder-dimensions no-print ${compactOfflineGuide ? "compact" : ""}`} style={holderDimensionsStyle}>{holderDimensionsLabel}</span>}
       {offlineHolder && <div className={`offline-holder-guide no-print ${compactOfflineGuide ? "compact" : ""}`} style={holderGuideStyle}>
-        <AlertCircle size={compactOfflineGuide ? 9 : 13} />
+        <AlertCircle size={compactOfflineGuide ? 12 : 16} />
         <span>
           <strong>{compactOfflineGuide ? "실물 크기에 맞추세요" : `실제 ${offlineGuideItemName} 크기에 최대한 맞추세요`}</strong>
-          <small>{compactOfflineGuide ? `접지 말고 1-2, 1-3 추가` : `큰 ${offlineGuideItemName}은 접지 말고, 조각 수만큼 ${offlineGuideItemName}을 추가하세요 (1-1, 1-2…)`}</small>
+          <small>{compactOfflineGuide
+            ? "접지 말고 1-2, 1-3 추가"
+            : <><span>{`큰 ${offlineGuideItemName}은 접지 말고 잘라 붙이세요`}</span><span>{`조각 수만큼 ${offlineGuideItemName} 추가 (1-1, 1-2…)`}</span></>}
+          </small>
         </span>
       </div>}
       {offlineHolder
