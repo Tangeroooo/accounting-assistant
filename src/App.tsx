@@ -1080,7 +1080,7 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
   const holderGuideFontSize = Math.max(5.5, Math.min(11, placement.widthMm / 6, placement.heightMm / 4.5));
   const holderDimensionsStyle = offlineHolder ? {
     fontSize: `${Math.min(14, watermarkFontSizePx(holderDimensionsLabel, placement.widthMm, placement.heightMm))}px`,
-    bottom: compactOfflineGuide ? undefined : `calc(6mm + ${holderGuideFontSize * 4.5}px)`,
+    bottom: compactOfflineGuide ? undefined : `calc(10mm + ${holderGuideFontSize * 4.5}px)`,
   } as React.CSSProperties : undefined;
   const holderGuideStyle = offlineHolder ? {
     "--offline-guide-size": `${holderGuideFontSize}px`,
