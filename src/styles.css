@@ -109,6 +109,10 @@ nav { display:flex;flex-direction:column;gap:5px; } nav button{height:44px;paddi
 .attachment-row .attachment-delete-button{width:30px;height:30px;display:grid;place-items:center;padding:0;border:1px solid transparent;border-radius:9px;background:transparent;color:#a5acb7;transition:border-color .14s ease,background .14s ease,color .14s ease}
 .attachment-row .attachment-delete-button:hover{border-color:#f1d7d5;background:#fff5f4;color:#c9554e}
 .attachment-row .attachment-delete-button:active{background:#fce9e7}
+.receipt-placement-guide{position:absolute;inset:0;z-index:20;border:1px dashed #7892b1a8;border-radius:1.5mm;box-shadow:inset 0 0 0 1px #ffffffb8;pointer-events:none}
+.receipt-placement-guide>span{position:absolute;right:3mm;top:-8px;display:flex;align-items:center;gap:1.5mm;padding:.8mm 1.5mm;border:1px solid #cbd7e4;border-radius:2mm;background:#f7fafff2;color:#526b88;box-shadow:0 2px 7px #203c5f14;white-space:nowrap}
+.receipt-placement-guide strong{font-size:8.5px;letter-spacing:-.1px}
+.receipt-placement-guide small{font-size:7.5px;color:#8190a3}
 
 .receipt-flow-item .receipt-screen-tag{left:50%;top:50%;width:max-content;max-width:88%;padding:var(--watermark-pad-y,2.2mm) var(--watermark-pad-x,4mm);border:1.5px solid #e94f24a8;border-radius:2.5mm;background:#fff4e6c7;color:#d93f18e8;font-size:var(--watermark-label-size,20px);font-weight:900;letter-spacing:.08em;text-align:center;text-shadow:0 1px 1px #fff,0 0 7px #fff;transform:translate(-50%,-50%) rotate(-9deg);overflow:visible;box-shadow:0 5px 18px #a8321824;user-select:none}
 .receipt-flow-item .receipt-screen-tag strong,.receipt-flow-item .receipt-screen-tag small{display:block;max-width:100%}
