@@ -84,7 +84,31 @@ nav { display:flex;flex-direction:column;gap:5px; } nav button{height:44px;paddi
 .picture-selection.cropping .handle-se{right:-4px;bottom:-4px;border-right:5px solid #111;border-bottom:5px solid #111}
 .picture-selection.cropping .handle-sw{left:-4px;bottom:-4px;border-left:5px solid #111;border-bottom:5px solid #111}
 
-.attachment-row{grid-template-columns:18px minmax(0,1fr) 115px 28px}
+.attachment-row{grid-template-columns:26px minmax(0,1fr) 112px auto;gap:9px;margin-top:8px;padding:9px 10px;border:1px solid #e5e9ef;border-radius:11px;background:linear-gradient(180deg,#fff 0%,#fbfcfe 100%);box-shadow:0 2px 7px #2035540a;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.attachment-row:hover{border-color:#d3dce8;box-shadow:0 5px 14px #20355412}
+.attachment-row .attachment-sequence{width:24px;height:24px;border:1px solid #dce5f0;border-radius:8px;background:#f0f5fb;color:#385678;font-size:8.5px;box-shadow:inset 0 1px #fff}
+.attachment-row .attachment-preview-trigger{height:36px;display:flex;align-items:center;gap:8px;padding:0;border:0;background:transparent;text-align:left;text-decoration:none;overflow:hidden}
+.attachment-row .attachment-preview-trigger:hover{background:transparent}
+.attachment-file-icon{width:30px;height:30px;flex:none;display:grid;place-items:center;border:1px solid #e0e7f0;border-radius:9px;background:#f6f9fc;color:#557493}
+.attachment-file-copy{min-width:0;display:block}
+.attachment-file-copy strong,.attachment-file-copy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachment-file-copy strong{font-size:8.5px;color:#35465e}
+.attachment-file-copy small{margin-top:3px;font-size:7px;font-weight:650;color:#99a2b1}
+.attachment-row .attachment-preview-trigger:hover .attachment-file-copy strong{color:#e76538}
+.attachment-kind-field{min-width:0;display:block}
+.attachment-kind-field>span{display:block;margin:0 0 3px 2px;font-size:6.5px;font-weight:750;color:#99a2b0}
+.attachment-row .attachment-kind-field select{width:100%;height:28px;padding:0 24px 0 8px;border-color:#dde3eb;border-radius:8px;background-color:#fff;color:#536174;font-weight:750;outline:none}
+.attachment-row .attachment-kind-field select:focus{border-color:#f09a79;box-shadow:0 0 0 2px #ff7a4514}
+.attachment-row-actions{display:flex;align-items:center;gap:7px;padding-left:1px}
+.attachment-order-controls{display:grid;grid-template-columns:30px 30px;gap:0;overflow:hidden;border:1px solid #dfe4eb;border-radius:9px;background:#fff;box-shadow:0 1px 3px #263c5b0d}
+.attachment-row .attachment-order-controls button{width:30px;height:30px;border:0;border-radius:0;background:#fff;color:#66758a;transition:background .14s ease,color .14s ease}
+.attachment-row .attachment-order-controls button+button{border-left:1px solid #e5e9ef}
+.attachment-row .attachment-order-controls button:hover:not(:disabled){background:#f0f4f9;color:#294766}
+.attachment-row .attachment-order-controls button:active:not(:disabled){background:#e8eef6}
+.attachment-row .attachment-order-controls button:disabled{background:#fafbfc;color:#c8ced7;opacity:1}
+.attachment-row .attachment-delete-button{width:30px;height:30px;display:grid;place-items:center;padding:0;border:1px solid transparent;border-radius:9px;background:transparent;color:#a5acb7;transition:border-color .14s ease,background .14s ease,color .14s ease}
+.attachment-row .attachment-delete-button:hover{border-color:#f1d7d5;background:#fff5f4;color:#c9554e}
+.attachment-row .attachment-delete-button:active{background:#fce9e7}
 
 .receipt-flow-item .receipt-screen-tag{left:50%;top:50%;width:max-content;max-width:88%;padding:var(--watermark-pad-y,2.2mm) var(--watermark-pad-x,4mm);border:1.5px solid #e94f24a8;border-radius:2.5mm;background:#fff4e6c7;color:#d93f18e8;font-size:var(--watermark-label-size,20px);font-weight:900;letter-spacing:.08em;text-align:center;text-shadow:0 1px 1px #fff,0 0 7px #fff;transform:translate(-50%,-50%) rotate(-9deg);overflow:visible;box-shadow:0 5px 18px #a8321824;user-select:none}
 .receipt-flow-item .receipt-screen-tag strong,.receipt-flow-item .receipt-screen-tag small{display:block;max-width:100%}
