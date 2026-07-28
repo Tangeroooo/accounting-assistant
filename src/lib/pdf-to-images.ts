@@ -28,6 +28,10 @@ function baseName(fileName: string) {
   return fileName.replace(/\.pdf$/i, "").trim() || "영수증";
 }
 
+function pdfJsAssetDirectory(directory: "cmaps" | "standard_fonts") {
+  return new URL(`${import.meta.env.BASE_URL}pdfjs/${directory}/`, window.location.href).href;
+}
+
 export async function normalizeAttachmentToImages(
   projectDirectory: string,
   attachment: Attachment,
@@ -36,8 +40,15 @@ export async function normalizeAttachmentToImages(
 
   const sourcePath = attachmentAbsolutePath(projectDirectory, attachment.relativePath);
   const generatedPaths: string[] = [];
+  let loadingTask: ReturnType<typeof getDocument> | undefined;
   try {
-    const loadingTask = getDocument({ data: await readAttachmentBytes(sourcePath) });
+    loadingTask = getDocument({
+      data: await readAttachmentBytes(sourcePath),
+      cMapUrl: pdfJsAssetDirectory("cmaps"),
+      cMapPacked: true,
+      standardFontDataUrl: pdfJsAssetDirectory("standard_fonts"),
+      useSystemFonts: true,
+    });
     const document = await loadingTask.promise;
     const images: Attachment[] = [];
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
@@ -69,12 +80,13 @@ export async function normalizeAttachmentToImages(
         },
       });
     }
-    await loadingTask.destroy();
     await deleteAttachmentFile(sourcePath);
     return images;
   } catch (error) {
     await Promise.all(generatedPaths.map((path) => deleteAttachmentFile(attachmentAbsolutePath(projectDirectory, path))));
     throw error;
+  } finally {
+    await loadingTask?.destroy();
   }
 }
 

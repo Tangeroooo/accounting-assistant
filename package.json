@@ -4,9 +4,10 @@
   "version": "0.1.3",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 1420",
-    "build": "tsc -b && vite build",
-    "build:web": "tsc -b && vite build --base=/accounting-assistant/app/ --outDir web-dist && node scripts/generate-service-worker.mjs web-dist /accounting-assistant/app/",
+    "sync:pdfjs-assets": "node scripts/sync-pdfjs-assets.mjs",
+    "dev": "npm run sync:pdfjs-assets && vite --host 0.0.0.0 --port 1420",
+    "build": "npm run sync:pdfjs-assets && tsc -b && vite build",
+    "build:web": "npm run sync:pdfjs-assets && tsc -b && vite build --base=/accounting-assistant/app/ --outDir web-dist && node scripts/generate-service-worker.mjs web-dist /accounting-assistant/app/",
     "test": "vitest run",
     "version:set": "node scripts/set-version.mjs",
     "tauri": "tauri"

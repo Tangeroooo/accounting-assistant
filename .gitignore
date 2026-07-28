@@ -16,3 +16,4 @@ reference/
 *.barun
 .*-barun-work/
 attachments/
+public/pdfjs/
