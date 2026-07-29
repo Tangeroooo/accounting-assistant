@@ -31,7 +31,7 @@ vi.mock("./desktop", () => ({
   ...mocks,
 }));
 
-import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./pdf-to-images";
+import { attachmentNeedsImageNormalization, normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./pdf-to-images";
 
 const pdfAttachment: Attachment = {
   id: "pdf",
@@ -62,7 +62,19 @@ describe("PDF·HEIF 첨부 이미지 변환", () => {
         }),
       }),
     });
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({} as CanvasRenderingContext2D);
+    vi.stubGlobal("Image", class {
+      src = "";
+      naturalWidth = 4000;
+      naturalHeight = 3000;
+      decode = vi.fn(async () => undefined);
+    });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:preview") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      fillStyle: "",
+    } as unknown as CanvasRenderingContext2D);
     vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => {
       callback({ arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer } as Blob);
     });
@@ -75,7 +87,8 @@ describe("PDF·HEIF 첨부 이미지 변환", () => {
     expect(images.map((image) => image.mimeType)).toEqual(["image/png", "image/png"]);
     expect(images.map((image) => image.originalName)).toEqual(["긴 영수증-1페이지.png", "긴 영수증-2페이지.png"]);
     expect(images.every((image) => image.relativePath.endsWith(".png"))).toBe(true);
-    expect(mocks.writeAttachmentBytes).toHaveBeenCalledTimes(2);
+    expect(images.every((image) => image.previewRelativePath?.endsWith(".jpg"))).toBe(true);
+    expect(mocks.writeAttachmentBytes).toHaveBeenCalledTimes(4);
     expect(mocks.destroyDocument).toHaveBeenCalledOnce();
     expect(mocks.deleteAttachmentFile).toHaveBeenCalledWith("/project/attachments/source.pdf");
     expect(mocks.getDocument).toHaveBeenCalledWith(expect.objectContaining({
@@ -88,25 +101,32 @@ describe("PDF·HEIF 첨부 이미지 변환", () => {
 
   it("이미지 첨부는 변환하지 않고 그대로 돌려준다", async () => {
     const image = { ...pdfAttachment, mimeType: "image/png", originalName: "긴 영수증.png", relativePath: "attachments/source.png" };
-    expect(await normalizeAttachmentToImages("/project", image)).toEqual([image]);
-    expect(mocks.writeAttachmentBytes).not.toHaveBeenCalled();
+    const [prepared] = await normalizeAttachmentToImages("/project", image);
+    expect(prepared).toMatchObject({ ...image, previewMimeType: "image/jpeg", previewPrepared: true });
+    expect(prepared.previewRelativePath).toMatch(/^attachments\/preview-.*\.jpg$/);
+    expect(mocks.writeAttachmentBytes).toHaveBeenCalledOnce();
   });
 
-  it("아이폰 HEIF 이미지를 PNG로 바꾸고 원본 파일을 제거한다", async () => {
+  it("아이폰 HEIF 원본을 보존하고 고화질 JPEG 렌더링 이미지를 만든다", async () => {
     const images = await normalizeAttachmentToImages("/project", heifAttachment);
 
     expect(images).toHaveLength(1);
     expect(images[0]).toMatchObject({
       id: "heif",
-      originalName: "아이폰 영수증.png",
-      mimeType: "image/png",
+      relativePath: "attachments/source.HEIC",
+      originalName: "아이폰 영수증.HEIC",
+      mimeType: "image/heic",
+      renderMimeType: "image/jpeg",
+      previewMimeType: "image/jpeg",
+      previewPrepared: true,
       kind: "online-receipt",
     });
-    expect(images[0].relativePath).toMatch(/^attachments\/heif-.*\.png$/);
+    expect(images[0].renderRelativePath).toMatch(/^attachments\/heif-render-.*\.jpg$/);
+    expect(images[0].previewRelativePath).toMatch(/^attachments\/preview-.*\.jpg$/);
     expect(mocks.isHeic).toHaveBeenCalledOnce();
-    expect(mocks.heicTo).toHaveBeenCalledWith(expect.objectContaining({ type: "image/png" }));
-    expect(mocks.writeAttachmentBytes).toHaveBeenCalledOnce();
-    expect(mocks.deleteAttachmentFile).toHaveBeenCalledWith("/project/attachments/source.HEIC");
+    expect(mocks.heicTo).toHaveBeenCalledWith(expect.objectContaining({ type: "image/jpeg", quality: 0.92 }));
+    expect(mocks.writeAttachmentBytes).toHaveBeenCalledTimes(2);
+    expect(mocks.deleteAttachmentFile).not.toHaveBeenCalledWith("/project/attachments/source.HEIC");
   });
 
   it("기존 프로젝트의 지출·공통 증빙 PDF와 HEIF를 모두 이미지로 마이그레이션한다", async () => {
@@ -143,8 +163,11 @@ describe("PDF·HEIF 첨부 이미지 변환", () => {
     expect(result.convertedPdfCount).toBe(2);
     expect(result.convertedHeifCount).toBe(1);
     expect(result.generatedImageCount).toBe(5);
+    expect(result.preparedAttachmentCount).toBe(3);
+    expect(result.generatedPreviewCount).toBe(5);
     expect(result.failures).toEqual([]);
-    expect(result.project.expenses[0].attachments.every((attachment) => attachment.mimeType === "image/png")).toBe(true);
+    expect(result.project.expenses[0].attachments.every((attachment) => !attachmentNeedsImageNormalization(attachment))).toBe(true);
+    expect(result.project.expenses[0].attachments.every((attachment) => attachment.previewPrepared)).toBe(true);
     expect(result.project.categoryEvidence[0].attachments.every((attachment) => attachment.mimeType === "image/png")).toBe(true);
   });
 });

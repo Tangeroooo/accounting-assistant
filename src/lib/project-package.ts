@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 
 import type { ProjectData } from "../types";
+import { attachmentAssetPaths } from "./attachment-assets";
 
 export const BARUN_FORMAT = "barun-accounting-project";
 export const BARUN_FORMAT_VERSION = 1;
@@ -20,8 +21,8 @@ export interface ParsedBarunPackage {
 
 export function collectProjectAssetPaths(project: ProjectData) {
   return [...new Set([
-    ...project.expenses.flatMap((expense) => expense.attachments.map((attachment) => attachment.relativePath)),
-    ...project.categoryEvidence.flatMap((evidence) => evidence.attachments.map((attachment) => attachment.relativePath)),
+    ...project.expenses.flatMap((expense) => expense.attachments.flatMap(attachmentAssetPaths)),
+    ...project.categoryEvidence.flatMap((evidence) => evidence.attachments.flatMap(attachmentAssetPaths)),
   ])].filter((path) => path.startsWith("attachments/") && !path.includes(".."));
 }
 
@@ -39,7 +40,9 @@ export async function createBarunPackage(
   };
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
   for (const relativePath of collectProjectAssetPaths(project)) {
-    zip.file(relativePath, await readAsset(relativePath));
+    // JPEG·PNG·HEIF는 이미 압축된 형식입니다. 다시 DEFLATE하면 용량은 거의
+    // 줄지 않지만 대용량 프로젝트 저장 시간이 크게 늘어나므로 그대로 담습니다.
+    zip.file(relativePath, await readAsset(relativePath), { compression: "STORE" });
   }
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 6 } });
 }

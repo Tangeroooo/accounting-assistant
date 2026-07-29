@@ -47,9 +47,17 @@ export interface Person {
 
 export interface Attachment {
   id: string;
+  /** 사용자가 첨부한 원본 파일. .barun 안에서 그대로 보존합니다. */
   relativePath: string;
   originalName: string;
   mimeType: string;
+  /** HEIF처럼 브라우저가 직접 표시할 수 없는 원본의 고화질 렌더링용 이미지입니다. */
+  renderRelativePath?: string;
+  renderMimeType?: string;
+  /** 편집 화면에서 빠르게 표시하는 축소 미리보기입니다. */
+  previewRelativePath?: string;
+  previewMimeType?: string;
+  previewPrepared?: boolean;
   layout?: {
     widthMm?: number;
     heightMm?: number;

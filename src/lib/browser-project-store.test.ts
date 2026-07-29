@@ -30,20 +30,20 @@ describe("웹앱 프로젝트 첨부 저장소", () => {
       settledAmount: 0,
       settlementStatus: "not-applicable",
     }];
-    browserWriteAsset("browser://barun-workspace/attachments/receipt.png", new Uint8Array([7, 8, 9]));
+    await browserWriteAsset("browser://barun-workspace/attachments/receipt.png", new Uint8Array([7, 8, 9]));
 
     const packageBytes = await createBarunPackage(project, async (path) => browserReadAsset(path));
     clearBrowserAssets();
     const parsed = await parseBarunPackage(packageBytes);
-    replaceBrowserAssets(parsed.assets);
+    await replaceBrowserAssets(parsed.assets);
 
-    expect(browserReadAsset("browser://barun-workspace/attachments/receipt.png")).toEqual(new Uint8Array([7, 8, 9]));
+    expect(await browserReadAsset("browser://barun-workspace/attachments/receipt.png")).toEqual(new Uint8Array([7, 8, 9]));
     expect(parsed.project.expenses[0].content).toBe("저녁 식사");
   });
 
-  it("삭제한 첨부는 더 이상 읽히지 않는다", () => {
-    browserWriteAsset("attachments/deleted.png", new Uint8Array([1]));
-    browserDeleteAsset("browser://barun-workspace/attachments/deleted.png");
-    expect(() => browserReadAsset("attachments/deleted.png")).toThrow("첨부파일을 찾을 수 없습니다");
+  it("삭제한 첨부는 더 이상 읽히지 않는다", async () => {
+    await browserWriteAsset("attachments/deleted.png", new Uint8Array([1]));
+    await browserDeleteAsset("browser://barun-workspace/attachments/deleted.png");
+    await expect(browserReadAsset("attachments/deleted.png")).rejects.toThrow("첨부파일을 찾을 수 없습니다");
   });
 });

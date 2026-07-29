@@ -4,8 +4,9 @@ import { createBarunPackage, parseBarunPackage } from "./project-package";
 export const BROWSER_WORKSPACE = "browser://barun-workspace";
 
 const DB_NAME = "barun-accounting-assistant";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "recovery";
+const ASSET_STORE_NAME = "assets";
 const CURRENT_PROJECT_KEY = "current-project";
 
 const assets = new Map<string, Uint8Array>();
@@ -22,31 +23,51 @@ function mimeTypeForPath(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".png")) return "image/png";
   if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".heic") || lower.endsWith(".heics")) return "image/heic";
+  if (lower.endsWith(".heif") || lower.endsWith(".heifs")) return "image/heif";
   if (lower.endsWith(".pdf")) return "application/pdf";
   return "image/jpeg";
 }
 
-export function browserWriteAsset(path: string, bytes: Uint8Array) {
+export async function browserWriteAsset(path: string, bytes: Uint8Array) {
   const relativePath = relativeAssetPath(path);
   const previousUrl = assetUrls.get(relativePath);
   if (previousUrl) URL.revokeObjectURL(previousUrl);
   assetUrls.delete(relativePath);
+  if ("indexedDB" in window) {
+    const ownedBuffer = new Uint8Array(bytes).buffer;
+    await withStore(ASSET_STORE_NAME, "readwrite", (store) => store.put(ownedBuffer, relativePath));
+    // 원본은 IndexedDB에 보관하고, 화면에서 실제로 요청한 축소 미리보기만
+    // 메모리에 올립니다. 대용량 사진을 첨부한 직후의 메모리 급증을 막습니다.
+    assets.delete(relativePath);
+    return;
+  }
   assets.set(relativePath, new Uint8Array(bytes));
 }
 
-export function browserReadAsset(path: string) {
+export async function browserReadAsset(path: string, cache = true) {
   const relativePath = relativeAssetPath(path);
-  const bytes = assets.get(relativePath);
+  let bytes = assets.get(relativePath);
+  if (!bytes && "indexedDB" in window) {
+    const stored = await withStore<ArrayBuffer | undefined>(ASSET_STORE_NAME, "readonly", (store) => store.get(relativePath));
+    if (stored) {
+      bytes = new Uint8Array(stored);
+      if (cache) assets.set(relativePath, bytes);
+    }
+  }
   if (!bytes) throw new Error(`프로젝트에서 첨부파일을 찾을 수 없습니다: ${relativePath}`);
   return new Uint8Array(bytes);
 }
 
-export function browserDeleteAsset(path: string) {
+export async function browserDeleteAsset(path: string) {
   const relativePath = relativeAssetPath(path);
   const previousUrl = assetUrls.get(relativePath);
   if (previousUrl) URL.revokeObjectURL(previousUrl);
   assetUrls.delete(relativePath);
   assets.delete(relativePath);
+  if ("indexedDB" in window) {
+    await withStore(ASSET_STORE_NAME, "readwrite", (store) => store.delete(relativePath));
+  }
 }
 
 export function browserAssetUrl(path: string) {
@@ -60,9 +81,26 @@ export function browserAssetUrl(path: string) {
   return url;
 }
 
-export function replaceBrowserAssets(nextAssets: Map<string, Uint8Array>) {
+export async function replaceBrowserAssets(nextAssets: Map<string, Uint8Array>) {
   clearBrowserAssets();
-  nextAssets.forEach((bytes, path) => assets.set(path, new Uint8Array(bytes)));
+  if (!("indexedDB" in window)) {
+    nextAssets.forEach((bytes, path) => assets.set(path, new Uint8Array(bytes)));
+    return;
+  }
+  const database = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(ASSET_STORE_NAME, "readwrite");
+      const store = transaction.objectStore(ASSET_STORE_NAME);
+      store.clear();
+      nextAssets.forEach((bytes, path) => store.put(new Uint8Array(bytes).buffer, path));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("첨부파일 저장소를 갱신하지 못했습니다."));
+      transaction.onabort = () => reject(transaction.error ?? new Error("첨부파일 저장소 갱신이 취소되었습니다."));
+    });
+  } finally {
+    database.close();
+  }
 }
 
 export function clearBrowserAssets() {
@@ -122,7 +160,8 @@ export function downloadBrowserFile(bytes: Uint8Array, fileName: string, mimeTyp
 }
 
 async function packageBytes(project: ProjectData) {
-  return createBarunPackage(project, async (relativePath) => browserReadAsset(relativePath));
+  // 백업을 만들 때 모든 원본을 한 번씩 읽되 메모리 캐시에 남기지 않습니다.
+  return createBarunPackage(project, (relativePath) => browserReadAsset(relativePath, false));
 }
 
 function openDatabase() {
@@ -130,18 +169,19 @@ function openDatabase() {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME);
+      if (!request.result.objectStoreNames.contains(ASSET_STORE_NAME)) request.result.createObjectStore(ASSET_STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("브라우저 저장소를 열지 못했습니다."));
   });
 }
 
-async function withStore<T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>) {
+async function withStore<T>(storeName: string, mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>) {
   const database = await openDatabase();
   try {
     return await new Promise<T>((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, mode);
-      const request = operation(transaction.objectStore(STORE_NAME));
+      const transaction = database.transaction(storeName, mode);
+      const request = operation(transaction.objectStore(storeName));
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error("브라우저 저장소 작업에 실패했습니다."));
     });
@@ -152,22 +192,37 @@ async function withStore<T>(mode: IDBTransactionMode, operation: (store: IDBObje
 
 export async function saveBrowserRecoveryProject(project: ProjectData) {
   if (!("indexedDB" in window)) return;
-  const bytes = await packageBytes(project);
-  const ownedBuffer = new Uint8Array(bytes).buffer;
-  await withStore("readwrite", (store) => store.put(ownedBuffer, CURRENT_PROJECT_KEY));
+  const { projectDirectory: _runtimeDirectory, ...portableProject } = project;
+  await withStore(STORE_NAME, "readwrite", (store) => store.put(portableProject, CURRENT_PROJECT_KEY));
 }
 
 export async function loadBrowserRecoveryProject(): Promise<ProjectData | null> {
   if (!("indexedDB" in window)) return null;
-  const stored = await withStore<ArrayBuffer | undefined>("readonly", (store) => store.get(CURRENT_PROJECT_KEY));
+  const stored = await withStore<ArrayBuffer | Omit<ProjectData, "projectDirectory"> | undefined>(STORE_NAME, "readonly", (store) => store.get(CURRENT_PROJECT_KEY));
   if (!stored) return null;
-  const parsed = await parseBarunPackage(new Uint8Array(stored));
-  replaceBrowserAssets(parsed.assets);
-  return { ...parsed.project, projectDirectory: BROWSER_WORKSPACE };
+  if (stored instanceof ArrayBuffer) {
+    const parsed = await parseBarunPackage(new Uint8Array(stored));
+    await replaceBrowserAssets(parsed.assets);
+    await saveBrowserRecoveryProject({ ...parsed.project, projectDirectory: BROWSER_WORKSPACE });
+    return { ...parsed.project, projectDirectory: BROWSER_WORKSPACE };
+  }
+  return { ...stored, projectDirectory: BROWSER_WORKSPACE };
 }
 
 export async function clearBrowserRecoveryProject() {
   clearBrowserAssets();
   if (!("indexedDB" in window)) return;
-  await withStore("readwrite", (store) => store.delete(CURRENT_PROJECT_KEY));
+  const database = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction([STORE_NAME, ASSET_STORE_NAME], "readwrite");
+      transaction.objectStore(STORE_NAME).delete(CURRENT_PROJECT_KEY);
+      transaction.objectStore(ASSET_STORE_NAME).clear();
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("브라우저 자동복구 자료를 지우지 못했습니다."));
+      transaction.onabort = () => reject(transaction.error ?? new Error("브라우저 자동복구 자료 삭제가 취소되었습니다."));
+    });
+  } finally {
+    database.close();
+  }
 }

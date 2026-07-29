@@ -107,13 +107,13 @@ const parentDirectory = (path: string) => path.replace(/[\\/][^\\/]+$/, "");
 async function packageBytes(project: ProjectData) {
   return createBarunPackage(project, async (relativePath) => {
     if (!project.projectDirectory) throw new Error("첨부파일 작업 폴더가 준비되지 않았습니다.");
-    return readAttachmentBytes(attachmentAbsolutePath(project.projectDirectory, relativePath));
+    return readAttachmentBytes(attachmentAbsolutePath(project.projectDirectory, relativePath), false);
   });
 }
 
 export async function writeAttachmentBytes(path: string, bytes: Uint8Array) {
   if (!isTauri()) {
-    browserWriteAsset(path, bytes);
+    await browserWriteAsset(path, bytes);
     return;
   }
   await invoke("write_binary_file", { path, bytes: Array.from(bytes) });
@@ -121,7 +121,7 @@ export async function writeAttachmentBytes(path: string, bytes: Uint8Array) {
 
 export async function deleteAttachmentFile(path: string) {
   if (!isTauri()) {
-    browserDeleteAsset(path);
+    await browserDeleteAsset(path);
     return;
   }
   await invoke("delete_file_if_exists", { path });
@@ -176,11 +176,11 @@ export async function openProjectDocument(path: string): Promise<{ project: Proj
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (file.name.toLowerCase().endsWith(".json")) {
       const project = JSON.parse(new TextDecoder().decode(bytes)) as ProjectData;
-      replaceBrowserAssets(new Map());
+      await replaceBrowserAssets(new Map());
       return { project: { ...project, projectDirectory: BROWSER_WORKSPACE }, sourceFormat: "json" };
     }
     const parsed = await parseBarunPackage(bytes);
-    replaceBrowserAssets(parsed.assets);
+    await replaceBrowserAssets(parsed.assets);
     return { project: { ...parsed.project, projectDirectory: BROWSER_WORKSPACE }, sourceFormat: "barun" };
   }
   if (path.toLowerCase().endsWith(".json")) {
@@ -199,7 +199,7 @@ async function importAttachmentPath(projectDirectory: string, sourcePath: string
     const mimeType = attachmentMimeType(file.name, file.type);
     const safeName = file.name.replace(/[^0-9A-Za-z가-힣._-]+/g, "-");
     const relativePath = `attachments/file-${crypto.randomUUID()}-${safeName}`;
-    browserWriteAsset(relativePath, new Uint8Array(await file.arrayBuffer()));
+    await browserWriteAsset(relativePath, new Uint8Array(await file.arrayBuffer()));
     return { id: crypto.randomUUID(), relativePath, originalName: file.name, mimeType, kind: "online-receipt" };
   }
   const copied = await invoke<{
@@ -267,8 +267,8 @@ export async function saveBinaryWithDialog(bytes: Uint8Array, defaultName: strin
   return path;
 }
 
-export async function readAttachmentBytes(absolutePath: string) {
-  if (!isTauri()) return browserReadAsset(absolutePath);
+export async function readAttachmentBytes(absolutePath: string, cache = true) {
+  if (!isTauri()) return browserReadAsset(absolutePath, cache);
   return new Uint8Array(await invoke<number[]>("read_binary_file", { path: absolutePath }));
 }
 

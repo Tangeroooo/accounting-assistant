@@ -3,6 +3,7 @@ import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 import type { Attachment, ProjectData } from "../types";
+import { attachmentRenderAsset } from "./attachment-assets";
 import { attachmentAbsolutePath, readAttachmentBytes } from "./desktop";
 import {
   buildReceiptBookItems,
@@ -88,10 +89,11 @@ async function renderImage(bytes: Uint8Array, mimeType: string) {
 
 async function renderAttachment(project: ProjectData, attachment: Attachment) {
   if (!project.projectDirectory) throw new Error("프로젝트 작업 폴더가 없어 첨부파일을 읽을 수 없습니다.");
-  const bytes = await readAttachmentBytes(attachmentAbsolutePath(project.projectDirectory, attachment.relativePath));
-  return attachment.mimeType === "application/pdf"
+  const asset = attachmentRenderAsset(attachment);
+  const bytes = await readAttachmentBytes(attachmentAbsolutePath(project.projectDirectory, asset.relativePath), false);
+  return asset.mimeType === "application/pdf"
     ? renderPdfFirstPage(bytes)
-    : renderImage(bytes, attachment.mimeType);
+    : renderImage(bytes, asset.mimeType);
 }
 
 function drawPlacedImage(

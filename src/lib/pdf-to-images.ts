@@ -8,19 +8,24 @@ import {
   readAttachmentBytes,
   writeAttachmentBytes,
 } from "./desktop";
+import { attachmentRenderAsset } from "./attachment-assets";
 import { DEFAULT_IMAGE_LAYOUT } from "./receipt-book";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-function canvasPngBytes(canvas: HTMLCanvasElement) {
+const PREVIEW_MAX_EDGE = 1600;
+const PREVIEW_JPEG_QUALITY = 0.82;
+const HEIF_RENDER_JPEG_QUALITY = 0.92;
+
+function canvasImageBytes(canvas: HTMLCanvasElement, mimeType: "image/png" | "image/jpeg", quality?: number) {
   return new Promise<Uint8Array>((resolve, reject) => {
     canvas.toBlob(async (blob) => {
       if (!blob) {
-        reject(new Error("PDF 페이지를 PNG 이미지로 만들지 못했습니다."));
+        reject(new Error("첨부 이미지를 변환하지 못했습니다."));
         return;
       }
       resolve(new Uint8Array(await blob.arrayBuffer()));
-    }, "image/png");
+    }, mimeType, quality);
   });
 }
 
@@ -37,33 +42,85 @@ export function isHeifAttachment(attachment: Pick<Attachment, "mimeType" | "orig
     || /\.(?:heic|heif|heics|heifs)$/i.test(attachment.originalName);
 }
 
-export function attachmentNeedsImageNormalization(attachment: Pick<Attachment, "mimeType" | "originalName">) {
+export function attachmentNeedsImageNormalization(attachment: Pick<Attachment, "mimeType" | "originalName" | "renderRelativePath">) {
   return attachment.mimeType === "application/pdf"
     || attachment.originalName.toLowerCase().endsWith(".pdf")
-    || isHeifAttachment(attachment);
+    || (isHeifAttachment(attachment) && !attachment.renderRelativePath);
+}
+
+export function attachmentNeedsImagePreparation(attachment: Pick<Attachment, "mimeType" | "originalName" | "renderRelativePath" | "previewPrepared">) {
+  return attachmentNeedsImageNormalization(attachment) || !attachment.previewPrepared;
+}
+
+async function imagePreviewBytes(bytes: Uint8Array, mimeType: string) {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mimeType }));
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const largestEdge = Math.max(image.naturalWidth, image.naturalHeight);
+    if (largestEdge <= PREVIEW_MAX_EDGE) return null;
+    const scale = PREVIEW_MAX_EDGE / largestEdge;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvasImageBytes(canvas, "image/jpeg", PREVIEW_JPEG_QUALITY);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function prepareAttachmentPreview(projectDirectory: string, attachment: Attachment) {
+  if (attachment.previewPrepared) return attachment;
+  const renderAsset = attachmentRenderAsset(attachment);
+  if (!/^image\/(?:png|jpe?g|webp)$/i.test(renderAsset.mimeType)) {
+    return { ...attachment, previewPrepared: true };
+  }
+  const previewRelativePath = `attachments/preview-${crypto.randomUUID()}.jpg`;
+  const previewPath = attachmentAbsolutePath(projectDirectory, previewRelativePath);
+  try {
+    const previewBytes = await imagePreviewBytes(
+      await readAttachmentBytes(attachmentAbsolutePath(projectDirectory, renderAsset.relativePath), false),
+      renderAsset.mimeType,
+    );
+    if (!previewBytes) return { ...attachment, previewPrepared: true };
+    await writeAttachmentBytes(previewPath, previewBytes);
+    return {
+      ...attachment,
+      previewRelativePath,
+      previewMimeType: "image/jpeg",
+      previewPrepared: true,
+    };
+  } catch {
+    await deleteAttachmentFile(previewPath);
+    return { ...attachment, previewPrepared: true };
+  }
 }
 
 async function normalizeHeifAttachment(projectDirectory: string, attachment: Attachment) {
   const sourcePath = attachmentAbsolutePath(projectDirectory, attachment.relativePath);
-  const relativePath = `attachments/heif-${crypto.randomUUID()}.png`;
-  const generatedPath = attachmentAbsolutePath(projectDirectory, relativePath);
+  const renderRelativePath = `attachments/heif-render-${crypto.randomUUID()}.jpg`;
+  const generatedPath = attachmentAbsolutePath(projectDirectory, renderRelativePath);
   try {
     const { heicTo, isHeic } = await import("heic-to/csp");
-    const sourceBytes = await readAttachmentBytes(sourcePath);
+    const sourceBytes = await readAttachmentBytes(sourcePath, false);
     const sourceFile = new File([sourceBytes as BlobPart], attachment.originalName, {
       type: attachment.mimeType || "image/heif",
     });
     if (!await isHeic(sourceFile)) throw new Error("HEIF 이미지 형식을 확인하지 못했습니다.");
-    const converted = await heicTo({ blob: sourceFile, type: "image/png" });
+    const converted = await heicTo({ blob: sourceFile, type: "image/jpeg", quality: HEIF_RENDER_JPEG_QUALITY });
     await writeAttachmentBytes(generatedPath, new Uint8Array(await converted.arrayBuffer()));
-    await deleteAttachmentFile(sourcePath);
-    return [{
+    return [await prepareAttachmentPreview(projectDirectory, {
       ...attachment,
-      relativePath,
-      originalName: `${baseName(attachment.originalName)}.png`,
-      mimeType: "image/png",
+      renderRelativePath,
+      renderMimeType: "image/jpeg",
       layout: attachment.layout ?? { ...DEFAULT_IMAGE_LAYOUT },
-    }];
+    })];
   } catch (error) {
     await deleteAttachmentFile(generatedPath);
     throw new Error(`HEIF 이미지를 변환하지 못했습니다: ${error instanceof Error ? error.message : "알 수 없는 오류"}`);
@@ -74,15 +131,17 @@ export async function normalizeAttachmentToImages(
   projectDirectory: string,
   attachment: Attachment,
 ): Promise<Attachment[]> {
-  if (isHeifAttachment(attachment)) return normalizeHeifAttachment(projectDirectory, attachment);
-  if (attachment.mimeType !== "application/pdf" && !attachment.originalName.toLowerCase().endsWith(".pdf")) return [attachment];
+  if (isHeifAttachment(attachment) && !attachment.renderRelativePath) return normalizeHeifAttachment(projectDirectory, attachment);
+  if (attachment.mimeType !== "application/pdf" && !attachment.originalName.toLowerCase().endsWith(".pdf")) {
+    return [await prepareAttachmentPreview(projectDirectory, attachment)];
+  }
 
   const sourcePath = attachmentAbsolutePath(projectDirectory, attachment.relativePath);
   const generatedPaths: string[] = [];
   let loadingTask: ReturnType<typeof getDocument> | undefined;
   try {
     loadingTask = getDocument({
-      data: await readAttachmentBytes(sourcePath),
+      data: await readAttachmentBytes(sourcePath, false),
       cMapUrl: pdfJsAssetDirectory("cmaps"),
       cMapPacked: true,
       standardFontDataUrl: pdfJsAssetDirectory("standard_fonts"),
@@ -104,10 +163,10 @@ export async function normalizeAttachmentToImages(
       const relativePath = `attachments/pdf-${crypto.randomUUID()}-page-${pageNumber}.png`;
       await writeAttachmentBytes(
         attachmentAbsolutePath(projectDirectory, relativePath),
-        await canvasPngBytes(canvas),
+        await canvasImageBytes(canvas, "image/png"),
       );
       generatedPaths.push(relativePath);
-      images.push({
+      const image = await prepareAttachmentPreview(projectDirectory, {
         id: crypto.randomUUID(),
         relativePath,
         originalName: `${baseName(attachment.originalName)}-${pageNumber}페이지.png`,
@@ -118,6 +177,8 @@ export async function normalizeAttachmentToImages(
           aspectRatio: viewport.width / viewport.height,
         },
       });
+      if (image.previewRelativePath) generatedPaths.push(image.previewRelativePath);
+      images.push(image);
     }
     await deleteAttachmentFile(sourcePath);
     return images;
@@ -134,24 +195,28 @@ export interface ProjectPdfMigrationResult {
   convertedPdfCount: number;
   convertedHeifCount: number;
   generatedImageCount: number;
+  preparedAttachmentCount: number;
+  generatedPreviewCount: number;
   failures: string[];
 }
 
 export async function normalizeProjectAttachmentsToImages(project: ProjectData): Promise<ProjectPdfMigrationResult> {
   if (!project.projectDirectory) {
-    return { project, convertedPdfCount: 0, convertedHeifCount: 0, generatedImageCount: 0, failures: [] };
+    return { project, convertedPdfCount: 0, convertedHeifCount: 0, generatedImageCount: 0, preparedAttachmentCount: 0, generatedPreviewCount: 0, failures: [] };
   }
 
   let convertedPdfCount = 0;
   let convertedHeifCount = 0;
   let generatedImageCount = 0;
+  let preparedAttachmentCount = 0;
+  let generatedPreviewCount = 0;
   const failures: string[] = [];
   const normalizeList = async (attachments: Attachment[]) => {
     const normalized: Attachment[] = [];
     for (const attachment of attachments) {
       const isPdf = attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf");
-      const isHeif = isHeifAttachment(attachment);
-      if (!isPdf && !isHeif) {
+      const isHeif = isHeifAttachment(attachment) && !attachment.renderRelativePath;
+      if (!attachmentNeedsImagePreparation(attachment)) {
         normalized.push(attachment);
         continue;
       }
@@ -160,7 +225,9 @@ export async function normalizeProjectAttachmentsToImages(project: ProjectData):
         normalized.push(...images);
         if (isPdf) convertedPdfCount += 1;
         if (isHeif) convertedHeifCount += 1;
-        generatedImageCount += images.length;
+        if (isPdf || isHeif) generatedImageCount += images.length;
+        preparedAttachmentCount += 1;
+        generatedPreviewCount += images.filter((image) => image.previewRelativePath && image.previewRelativePath !== attachment.previewRelativePath).length;
       } catch (error) {
         normalized.push(attachment);
         failures.push(`${attachment.originalName}: ${error instanceof Error ? error.message : "이미지 변환 실패"}`);
@@ -183,6 +250,8 @@ export async function normalizeProjectAttachmentsToImages(project: ProjectData):
     convertedPdfCount,
     convertedHeifCount,
     generatedImageCount,
+    preparedAttachmentCount,
+    generatedPreviewCount,
     failures,
   };
 }

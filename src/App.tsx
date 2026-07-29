@@ -80,10 +80,11 @@ import {
   saveProjectPackageAs,
 } from "./lib/desktop";
 import { createAccountingWorkbook } from "./lib/excel-export";
+import { attachmentPreviewAsset, attachmentRenderAsset } from "./lib/attachment-assets";
 import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkDisplayLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookDocx } from "./lib/receipt-docx";
 import { createReceiptBookPdf, renderReceiptBookPageCanvases } from "./lib/receipt-pdf";
-import { attachmentNeedsImageNormalization, normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
+import { attachmentNeedsImageNormalization, attachmentNeedsImagePreparation, normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
 import AppUpdater from "./components/AppUpdater";
 import MoneyInput from "./components/MoneyInput";
 import ProjectOnboarding from "./components/ProjectOnboarding";
@@ -184,6 +185,7 @@ function App() {
   const [view, setView] = useState<ViewId>("overview");
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [projectOpenBusy, setProjectOpenBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [outputBusy, setOutputBusy] = useState<"excel" | ReceiptExportFormat | null>(null);
   const [receiptExportFormat, setReceiptExportFormat] = useState<ReceiptExportFormat>("pdf");
@@ -251,7 +253,7 @@ function App() {
     ...project.expenses.flatMap((expense) => expense.attachments),
     ...project.categoryEvidence.flatMap((evidence) => evidence.attachments),
   ]
-    .filter(attachmentNeedsImageNormalization)
+    .filter(attachmentNeedsImagePreparation)
     .map((attachment) => attachment.relativePath)
     .sort()
     .join("|"), [project.expenses, project.categoryEvidence]);
@@ -266,11 +268,12 @@ function App() {
       const result = await normalizeProjectAttachmentsToImages(project);
       if (attachmentMigrationRef.current !== migrationKey) return;
       const convertedFileCount = result.convertedPdfCount + result.convertedHeifCount;
+      const changedAttachmentCount = result.preparedAttachmentCount;
       const next = applyDerivedState(result.project);
-      if (convertedFileCount > 0) setProject(next);
+      if (changedAttachmentCount > 0) setProject(next);
       try {
-        if (convertedFileCount > 0 && projectFilePath) await saveProjectPackage(next, projectFilePath);
-        if (convertedFileCount > 0) persistedSnapshotRef.current = JSON.stringify(next);
+        if (changedAttachmentCount > 0 && projectFilePath) await saveProjectPackage(next, projectFilePath);
+        if (changedAttachmentCount > 0) persistedSnapshotRef.current = JSON.stringify(next);
         setSaveState("saved");
       } catch {
         setSaveState("error");
@@ -283,6 +286,8 @@ function App() {
           result.convertedHeifCount > 0 ? `HEIF ${result.convertedHeifCount}개` : "",
         ].filter(Boolean).join("·");
         setToast(`기존 ${convertedKinds}를 ${result.generatedImageCount}개 이미지로 바꾸고 프로젝트에 다시 저장했습니다.`);
+      } else if (result.generatedPreviewCount > 0) {
+        setToast(`대용량 첨부 ${result.generatedPreviewCount}개의 빠른 미리보기를 준비했습니다. 원본은 그대로 보존됩니다.`);
       }
     })();
   }, [attachmentMigrationSignature, browserReady, project.id, project.projectDirectory, projectFilePath]);
@@ -344,6 +349,7 @@ function App() {
   const handleOpen = async () => {
     const path = await chooseProjectFile();
     if (!path) return;
+    setProjectOpenBusy(true);
     try {
       const opened = await openProjectDocument(path);
       const next = applyDerivedState(opened.project);
@@ -356,6 +362,8 @@ function App() {
       setToast(opened.sourceFormat === "barun" ? "이미지가 포함된 .barun 프로젝트를 열었습니다." : "기존 JSON 프로젝트를 열었습니다. 다음 저장 시 .barun으로 전환됩니다.");
     } catch (error) {
       setToast(error instanceof Error ? error.message : "프로젝트를 열지 못했습니다.");
+    } finally {
+      setProjectOpenBusy(false);
     }
   };
 
@@ -473,9 +481,12 @@ function App() {
               {saveState === "error" ? <AlertCircle size={14} /> : saveState === "saving" ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}
               {saveState === "error" ? "자동 복구 확인 필요" : saveState === "saving" ? "이 기기에 저장 중" : "웹앱 · 이 기기에 자동 복구"}
             </span>}
-            <button className="button ghost" onClick={handleNew}><Plus size={17} /> 새 프로젝트</button>
-            <button className="button ghost" onClick={handleOpen}><FolderOpen size={17} /> 열기</button>
-            <button className="button primary" onClick={handleSave} disabled={saveState === "saving"}>
+            <button className="button ghost" onClick={handleNew} disabled={projectOpenBusy}><Plus size={17} /> 새 프로젝트</button>
+            <button className="button ghost" onClick={handleOpen} disabled={projectOpenBusy}>
+              {projectOpenBusy ? <LoaderCircle className="spin" size={17} /> : <FolderOpen size={17} />}
+              {projectOpenBusy ? "프로젝트 여는 중" : "열기"}
+            </button>
+            <button className="button primary" onClick={handleSave} disabled={saveState === "saving" || projectOpenBusy}>
               {saveState === "saving" ? <LoaderCircle className="spin" size={17} /> : saveState === "saved" ? <Check size={17} /> : <Save size={17} />}
               {!isTauri() ? ".barun 백업 저장" : !projectFilePath ? "프로젝트 저장" : saveState === "saving" ? "자동 저장 중" : saveState === "saved" ? "자동 저장됨" : saveState === "error" ? "저장 다시 시도" : "지금 저장"}
             </button>
@@ -1165,8 +1176,9 @@ function PrintableAttachment({ project, attachment, alt, frameWidthMm, frameHeig
   return <div className={`online-receipt ${editable ? "editable" : ""} ${ghost ? "crop-original-ghost" : ""}`}><img src={source} alt={alt} draggable={false} style={contentStyle} onLoad={(event) => onAspectRatio?.(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)} /></div>;
 }
 
-function useAttachmentPreviewSource(project: ProjectData, attachment: Attachment) {
+function useAttachmentPreviewSource(project: ProjectData, attachment: Attachment, quality: "preview" | "render" = "preview") {
   const [preview, setPreview] = useState({ source: "", failed: false });
+  const asset = quality === "render" ? attachmentRenderAsset(attachment) : attachmentPreviewAsset(attachment);
   useEffect(() => {
     if (!project.projectDirectory) {
       setPreview({ source: "", failed: true });
@@ -1175,9 +1187,12 @@ function useAttachmentPreviewSource(project: ProjectData, attachment: Attachment
     let active = true;
     let objectUrl = "";
     setPreview({ source: "", failed: false });
-    void readAttachmentBytes(attachmentAbsolutePath(project.projectDirectory, attachment.relativePath))
+    void readAttachmentBytes(
+      attachmentAbsolutePath(project.projectDirectory, asset.relativePath),
+      quality === "preview",
+    )
       .then((bytes) => {
-        objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: attachment.mimeType || "image/png" }));
+        objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: asset.mimeType || "image/png" }));
         if (active) setPreview({ source: objectUrl, failed: false });
         else URL.revokeObjectURL(objectUrl);
       })
@@ -1186,7 +1201,7 @@ function useAttachmentPreviewSource(project: ProjectData, attachment: Attachment
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachment.mimeType, attachment.relativePath, project.projectDirectory]);
+  }, [asset.mimeType, asset.relativePath, project.projectDirectory]);
   return preview;
 }
 
@@ -1477,7 +1492,7 @@ function InlineExpenseAttachmentPreview({ project, attachment, onExpand }: { pro
 }
 
 function AttachmentPreviewModal({ project, attachment, onClose }: { project: ProjectData; attachment: Attachment; onClose: () => void }) {
-  const { source, failed } = useAttachmentPreviewSource(project, attachment);
+  const { source, failed } = useAttachmentPreviewSource(project, attachment, "render");
   return <div className="attachment-preview-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <div className="attachment-preview-modal" role="dialog" aria-modal="true" aria-label={`${attachment.originalName} 미리보기`}>
       <div className="attachment-preview-header"><div><FileImage size={19} /><span><strong>{attachment.originalName}</strong><small>첨부파일 확대 보기</small></span></div><button className="icon-button" aria-label="미리보기 닫기" onClick={onClose}><X size={19} /></button></div>
