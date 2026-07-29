@@ -63,6 +63,7 @@ import {
   validateProject,
 } from "./lib/accounting";
 import {
+  auditBrowserProjectAssets,
   attachmentAbsolutePath,
   backupProjectPackageForUpdate,
   BROWSER_WORKSPACE,
@@ -79,6 +80,7 @@ import {
   saveProjectPackage,
   saveProjectPackageAs,
 } from "./lib/desktop";
+import { mergeAttachmentMigrationResult } from "./lib/attachment-migration-merge";
 import { createAccountingWorkbook } from "./lib/excel-export";
 import { attachmentPreviewAsset, attachmentRenderAsset } from "./lib/attachment-assets";
 import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkDisplayLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
@@ -175,8 +177,10 @@ function App() {
       return createEmptyProject();
     }
   });
+  const projectRef = useRef(project);
   const persistedSnapshotRef = useRef(JSON.stringify(project));
   const attachmentMigrationRef = useRef("");
+  const browserSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [browserReady, setBrowserReady] = useState(isTauri());
   const [projectFilePath, setProjectFilePath] = useState<string | undefined>(() => {
     if (!isTauri()) return undefined;
@@ -193,17 +197,43 @@ function App() {
     !project.meta.teamName && project.expenses.length === 0,
   );
 
+  const replaceProject = (next: ProjectData) => {
+    projectRef.current = next;
+    setProject(next);
+  };
+
+  const queueBrowserRecoverySave = (next: ProjectData) => {
+    const queued = browserSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => saveBrowserRecoveryProject(next));
+    browserSaveQueueRef.current = queued;
+    return queued;
+  };
+
+  const persistProjectImmediately = async (next: ProjectData) => {
+    const serialized = JSON.stringify(next);
+    setSaveState("saving");
+    if (!isTauri()) {
+      await queueBrowserRecoverySave(next);
+    } else if (projectFilePath) {
+      await saveProjectPackage(next, projectFilePath);
+    }
+    persistedSnapshotRef.current = serialized;
+    if (JSON.stringify(projectRef.current) === serialized) setSaveState("saved");
+  };
+
   useEffect(() => {
     const serialized = JSON.stringify(project);
     localStorage.setItem("accounting-assistant-project", serialized);
     if (!browserReady) return;
     if (!isTauri()) {
+      if (serialized === persistedSnapshotRef.current) return;
       setSaveState("saving");
       const timer = window.setTimeout(async () => {
         try {
-          await saveBrowserRecoveryProject(project);
+          await queueBrowserRecoverySave(project);
           persistedSnapshotRef.current = serialized;
-          setSaveState("saved");
+          if (JSON.stringify(projectRef.current) === serialized) setSaveState("saved");
         } catch {
           setSaveState("error");
         }
@@ -225,16 +255,30 @@ function App() {
   }, [browserReady, project, projectFilePath]);
 
   useEffect(() => {
+    if (isTauri() || saveState !== "saving") return;
+    const warnBeforeReload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeReload);
+    return () => window.removeEventListener("beforeunload", warnBeforeReload);
+  }, [saveState]);
+
+  useEffect(() => {
     if (isTauri()) return;
     void (async () => {
       try {
         const recovered = await loadBrowserRecoveryProject();
         if (recovered) {
           const next = applyDerivedState(recovered);
+          const assetAudit = await auditBrowserProjectAssets(next);
           persistedSnapshotRef.current = JSON.stringify(next);
-          setProject(next);
+          replaceProject(next);
           setShowOnboarding(!next.meta.teamName && next.expenses.length === 0);
           setSaveState("saved");
+          if (assetAudit.missingPaths.length > 0) {
+            setToast(`자동 복구본에서 첨부 이미지 ${assetAudit.missingPaths.length}개를 찾지 못했습니다. 마지막 .barun 백업을 다시 열어 주세요.`);
+          }
         }
       } catch {
         setToast("이전 자동 복구본을 읽지 못했습니다. 새 프로젝트로 시작합니다.");
@@ -265,16 +309,20 @@ function App() {
     attachmentMigrationRef.current = migrationKey;
     setSaveState("saving");
     void (async () => {
-      const result = await normalizeProjectAttachmentsToImages(project);
+      const migrationSource = project;
+      const result = await normalizeProjectAttachmentsToImages(migrationSource);
       if (attachmentMigrationRef.current !== migrationKey) return;
       const convertedFileCount = result.convertedPdfCount + result.convertedHeifCount;
       const changedAttachmentCount = result.preparedAttachmentCount;
-      const next = applyDerivedState(result.project);
-      if (changedAttachmentCount > 0) setProject(next);
+      const next = applyDerivedState(mergeAttachmentMigrationResult(
+        migrationSource,
+        result.project,
+        projectRef.current,
+      ));
+      if (changedAttachmentCount > 0) replaceProject(next);
       try {
-        if (changedAttachmentCount > 0 && projectFilePath) await saveProjectPackage(next, projectFilePath);
-        if (changedAttachmentCount > 0) persistedSnapshotRef.current = JSON.stringify(next);
-        setSaveState("saved");
+        if (changedAttachmentCount > 0) await persistProjectImmediately(next);
+        else setSaveState("saved");
       } catch {
         setSaveState("error");
       }
@@ -304,8 +352,33 @@ function App() {
   const settlements = useMemo(() => settlementSummaries(project), [project]);
 
   const updateProject = (updater: (current: ProjectData) => ProjectData) => {
-    setProject((current) => applyDerivedState(updater(current)));
+    const next = applyDerivedState(updater(projectRef.current));
+    replaceProject(next);
     setSaveState("idle");
+    return next;
+  };
+
+  const handleExpenseSave = async (expense: Expense, payerName?: string) => {
+    const current = projectRef.current;
+    const assigned = assignPayerFromExpense(current.people, expense, payerName);
+    const next = applyDerivedState({
+      ...current,
+      people: assigned.people,
+      expenses: current.expenses.some((item) => item.id === assigned.expense.id)
+        ? current.expenses.map((item) => item.id === assigned.expense.id ? assigned.expense : item)
+        : [...current.expenses, assigned.expense],
+    });
+    replaceProject(next);
+    try {
+      await persistProjectImmediately(next);
+      setEditingExpense(null);
+      setToast("지출 내역과 첨부 이미지를 이 기기에 저장했습니다.");
+      return true;
+    } catch (error) {
+      setSaveState("error");
+      setToast(error instanceof Error ? error.message : "지출 내역을 저장하지 못했습니다. 다시 시도해 주세요.");
+      return false;
+    }
   };
 
   const handleChooseProjectFile = async () => {
@@ -314,7 +387,7 @@ function App() {
       if (!saved) return false;
       const next = applyDerivedState(saved.project);
       persistedSnapshotRef.current = JSON.stringify(next);
-      setProject(next);
+      replaceProject(next);
       setProjectFilePath(saved.packagePath);
       setSaveState("saved");
       return true;
@@ -332,7 +405,7 @@ function App() {
         if (!saved) { setSaveState("idle"); return; }
         const next = applyDerivedState(saved.project);
         persistedSnapshotRef.current = JSON.stringify(next);
-        setProject(next);
+        replaceProject(next);
         setProjectFilePath(saved.packagePath);
       } else {
         await saveProjectPackage(project, projectFilePath);
@@ -354,7 +427,7 @@ function App() {
       const opened = await openProjectDocument(path);
       const next = applyDerivedState(opened.project);
       persistedSnapshotRef.current = JSON.stringify(next);
-      setProject(next);
+      replaceProject(next);
       setProjectFilePath(opened.packagePath);
       setShowOnboarding(false);
       setView("overview");
@@ -372,7 +445,7 @@ function App() {
     const next = isTauri() ? createEmptyProject() : { ...createEmptyProject(), projectDirectory: BROWSER_WORKSPACE };
     if (!isTauri()) void clearBrowserRecoveryProject();
     persistedSnapshotRef.current = JSON.stringify(next);
-    setProject(next);
+    replaceProject(next);
     setProjectFilePath(undefined);
     setView("overview");
     setShowOnboarding(true);
@@ -383,10 +456,10 @@ function App() {
     if (isTauri() && !projectFilePath) return;
     if (!isTauri()) {
       const next = project.projectDirectory ? project : { ...project, projectDirectory: BROWSER_WORKSPACE };
-      setProject(next);
+      replaceProject(next);
       try {
         setSaveState("saving");
-        await saveBrowserRecoveryProject(next);
+        await queueBrowserRecoverySave(next);
         persistedSnapshotRef.current = JSON.stringify(next);
         setSaveState("saved");
       } catch {
@@ -503,7 +576,7 @@ function App() {
                 savedProject = applyDerivedState(saved.project);
                 savedPath = saved.packagePath;
                 if (!savedPath) throw new Error("업데이트 전 프로젝트 파일 경로를 확인하지 못했습니다.");
-                setProject(savedProject);
+                replaceProject(savedProject);
                 setProjectFilePath(savedPath);
               } else {
                 await saveProjectPackage(project, savedPath);
@@ -538,20 +611,7 @@ function App() {
           updateProject={updateProject}
           onToast={setToast}
           onClose={() => setEditingExpense(null)}
-          onSave={(expense, payerName) => {
-            updateProject((current) => {
-              const assigned = assignPayerFromExpense(current.people, expense, payerName);
-              return {
-                ...current,
-                people: assigned.people,
-                expenses: current.expenses.some((item) => item.id === assigned.expense.id)
-                  ? current.expenses.map((item) => item.id === assigned.expense.id ? assigned.expense : item)
-                  : [...current.expenses, assigned.expense],
-              };
-            });
-            setEditingExpense(null);
-            setToast("지출 내역을 반영했습니다. 프로젝트에 자동 저장됩니다.");
-          }}
+          onSave={handleExpenseSave}
         />
       )}
       {toast && <div className="toast no-print"><BadgeCheck size={18} />{toast}</div>}
@@ -1228,18 +1288,33 @@ function SettingsView({ project, projectFilePath, updateProject }: { project: Pr
   </section>;
 }
 
-function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSave }: { project: ProjectData; expense: Expense; updateProject: (updater: (project: ProjectData) => ProjectData) => void; onToast: (message: string) => void; onClose: () => void; onSave: (expense: Expense, payerName?: string) => void }) {
-  const [draft, setDraft] = useState<Expense>(() => ({
+function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSave }: { project: ProjectData; expense: Expense; updateProject: (updater: (project: ProjectData) => ProjectData) => void; onToast: (message: string) => void; onClose: () => void; onSave: (expense: Expense, payerName?: string) => Promise<boolean> }) {
+  const initialDraftRef = useRef<Expense>({
     ...expense,
     content: expenseContentForEditor(expense),
     itemDetails: "",
-  }));
+  });
+  const [draft, setDraft] = useState<Expense>(initialDraftRef.current);
   const [contentEdited, setContentEdited] = useState(false);
-  const [payerName, setPayerName] = useState(project.people.find((person) => person.id === expense.payerId)?.name ?? "");
+  const initialPayerNameRef = useRef(project.people.find((person) => person.id === expense.payerId)?.name ?? "");
+  const [payerName, setPayerName] = useState(initialPayerNameRef.current);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [inlineAttachmentId, setInlineAttachmentId] = useState<string | null>(expense.attachments[0]?.id ?? null);
   const [clipboardTarget, setClipboardTarget] = useState<"receipt" | "fuel" | null>(null);
   const [attachmentProcessingTarget, setAttachmentProcessingTarget] = useState<"receipt" | "fuel" | null>(null);
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const hasUnsavedDraft = contentEdited
+    || payerName !== initialPayerNameRef.current
+    || JSON.stringify(draft) !== JSON.stringify(initialDraftRef.current);
+  useEffect(() => {
+    if (isTauri() || (!hasUnsavedDraft && !attachmentProcessingTarget && !submitBusy)) return;
+    const warnBeforeReload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeReload);
+    return () => window.removeEventListener("beforeunload", warnBeforeReload);
+  }, [attachmentProcessingTarget, hasUnsavedDraft, submitBusy]);
   const update = <K extends keyof Expense>(key: K, value: Expense[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const moveAttachment = (attachmentId: string, offset: -1 | 1) => setDraft((current) => {
     const currentIndex = current.attachments.findIndex((attachment) => attachment.id === attachmentId);
@@ -1440,8 +1515,14 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
   const canSaveExpense = missingRequiredFields.length === 0;
   const receiptAttachmentBusy = attachmentProcessingTarget === "receipt";
   const fuelAttachmentBusy = attachmentProcessingTarget === "fuel";
-  const canSubmitExpense = canSaveExpense && attachmentProcessingTarget === null;
-  return <><div className="modal-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="expense-drawer"><div className="drawer-header"><div><span className="eyebrow">EXPENSE</span><h2>{project.expenses.some((item) => item.id === expense.id) ? "지출 수정" : "새 지출 등록"}</h2></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div><div className="expense-editor-workspace"><ExpenseEvidencePane project={project} expense={draft} attachment={inlineAttachment} clipboardPasteArmed={clipboardTarget === "receipt"} attachmentBusy={receiptAttachmentBusy} onSelectAttachment={setInlineAttachmentId} onExpandAttachment={setPreviewAttachment} onAttach={attach} onArmClipboardPaste={() => armClipboardPaste("receipt")} /><div className="drawer-body">
+  const canSubmitExpense = canSaveExpense && attachmentProcessingTarget === null && !submitBusy;
+  const submitExpense = async () => {
+    if (!canSubmitExpense) return;
+    setSubmitBusy(true);
+    const saved = await onSave(saveDraft, payerName);
+    if (!saved) setSubmitBusy(false);
+  };
+  return <><div className="modal-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && !submitBusy && onClose()}><div className="expense-drawer"><div className="drawer-header"><div><span className="eyebrow">EXPENSE</span><h2>{project.expenses.some((item) => item.id === expense.id) ? "지출 수정" : "새 지출 등록"}</h2></div><button className="icon-button" onClick={onClose} disabled={submitBusy}><X size={20} /></button></div><div className="expense-editor-workspace"><ExpenseEvidencePane project={project} expense={draft} attachment={inlineAttachment} clipboardPasteArmed={clipboardTarget === "receipt"} attachmentBusy={receiptAttachmentBusy} onSelectAttachment={setInlineAttachmentId} onExpandAttachment={setPreviewAttachment} onAttach={attach} onArmClipboardPaste={() => armClipboardPaste("receipt")} /><div className="drawer-body">
     <div className={`editor-live-reconcile ${liveReconciliation.difference === 0 ? "balanced" : "unbalanced"}`}><div><span>수입</span><strong>{money(liveReconciliation.income.total)}</strong></div><i>−</i><div><span>이 지출 포함 총지출</span><strong>{money(liveReconciliation.expense.total)}</strong></div><i>−</i><div><span>환입액</span><strong>{money(liveReconciliation.returnAmount)}</strong></div><i>=</i><div><span>실시간 차액</span><strong>{money(liveReconciliation.difference)}</strong></div></div>
     <div className="field-grid editor-grid"><label className="field"><span>항목</span><select value={draft.category} onChange={(event) => update("category", event.target.value as CategoryId)}>{CATEGORY_DEFINITIONS.map((category) => <option key={category.id} value={category.id}>{category.number}. {category.label}</option>)}</select></label><Field label="날짜" type="date" value={draft.date} onChange={(value) => update("date", value)} /><div className="field full expense-content-field"><label htmlFor="expense-content">내용</label><textarea id="expense-content" value={draft.content} onChange={(event) => { setContentEdited(true); update("content", event.target.value); }} placeholder="지출 목적과 품목·규격·수량을 자세히 적으세요" /><small>어디에 왜 썼는지, 필요한 경우 품목·규격·수량·대상까지 한 칸에 자세히 적으세요.</small><div className="expense-content-examples"><strong><BookOpen size={13} /> 템플릿 작성 예시</strong><ol>{contentExamples.map((example, index) => <li key={example}><span>{index + 1}</span><code>{example}</code></li>)}</ol></div><small>항목명은 Excel 저장 시 자동으로 붙습니다. 식사 인원은 아래에 따로 입력하면 내용 맨 뒤에 ‘총 9명’ 형식으로 붙습니다.</small></div><MoneyField label="금액" value={draft.amount} onChange={(value) => update("amount", value)} full={draft.category !== "meals" && draft.category !== "transport"} />{draft.category === "meals" && <Field label="식사 인원" type="number" value={String(draft.mealHeadcount || "")} onChange={(value) => update("mealHeadcount", Number(value))} />}{draft.category === "transport" && <label className="check-field"><input type="checkbox" checked={draft.isFuel} onChange={(event) => update("isFuel", event.target.checked)} /><Fuel size={17} /><span><strong>주유비 지출</strong><small>아래 공통 산정 증빙을 함께 검사합니다.</small></span></label>}<label className="field full note-field"><span>비고</span><textarea value={draft.note} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value, noteMode: "manual" }))} placeholder="공식 금전출납부 비고란에 표시할 내용만" />{draft.category === "teamMinistry" && draft.id === firstTeamMinistryId && <button type="button" className="note-auto-button" onClick={() => setDraft((current) => ({ ...current, note: automaticTeamMinistryNote, noteMode: "auto" }))}><RotateCcw size={13} /> 지원금·회비 비고 자동 작성</button>}</label></div>
     {draft.category === "teamMinistry" && <div className="support-allocation-field selected automatic"><span className="support-allocation-check"><Check size={14} /></span><CircleDollarSign size={20} /><span><strong>팀별사역지원금 사용액으로 자동 계산</strong><small>지원금보다 남은 금액은 환입하고, 초과분은 팀회비 충당액으로 자동 계산합니다.</small></span></div>}
@@ -1461,12 +1542,12 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
     <div className="editor-section internal-section"><div className="section-title"><div><span>누가 결제했나요? <em>앱 내부 전용</em></span><small>기본은 팀비입니다. 팀원이 먼저 냈을 때만 이름을 입력하세요.</small></div></div><div className="choice-cards payment"><button className={draft.paymentSource === "team" ? "selected" : ""} onClick={() => update("paymentSource", "team")}><WalletCards size={20} /><span><strong>팀비로 결제</strong><small>별도 정산 없음</small></span></button><button className={draft.paymentSource === "personal" ? "selected" : ""} onClick={() => update("paymentSource", "personal")}><Users size={20} /><span><strong>개인이 먼저 결제</strong><small>나중에 돌려줄 금액</small></span></button></div>{draft.paymentSource === "personal" && <div className="payer-inline"><label className="field"><span>먼저 결제한 사람</span><input list="known-payers" value={payerName} onChange={(event) => { const name = event.target.value; setPayerName(name); const existing = project.people.find((person) => person.name === name); update("payerId", existing?.id); }} placeholder="이름을 바로 입력하세요" /><datalist id="known-payers">{project.people.filter((person) => person.name.trim()).map((person) => <option value={person.name} key={person.id} />)}</datalist><small>{project.people.some((person) => person.name === payerName) ? "기존 정산 대상자를 선택했습니다." : payerName.trim() ? "새 이름은 내역 반영 시 자동 등록됩니다." : "설정에서 미리 추가할 필요가 없습니다."}</small></label><div className="field-grid settlement-fields"><MoneyField label="돌려줄 금액" value={draft.settlementTargetAmount || draft.amount} onChange={(value) => update("settlementTargetAmount", value)} /><MoneyField label="이미 돌려준 금액" value={draft.settledAmount} onChange={(value) => update("settledAmount", value)} /></div></div>}<div className="internal-caption"><BadgeCheck size={15} /> 이름과 정산 정보는 공식 Excel과 영수증철에 표시되지 않습니다.</div></div>
   </div></div><div className="drawer-footer">
     <div className="drawer-footer-actions">
-      <button className="button ghost" onClick={onClose}>취소</button>
+      <button className="button ghost" onClick={onClose} disabled={submitBusy}>취소</button>
       <div id="expense-save-requirements" className={`expense-save-requirements ${canSubmitExpense ? "complete" : "incomplete"}`} role="status" aria-live="polite">
-        {attachmentProcessingTarget ? <LoaderCircle className="spin" size={18} /> : canSaveExpense ? <BadgeCheck size={18} /> : <AlertCircle size={18} />}
-        <span><strong>{attachmentProcessingTarget ? "첨부파일을 처리하고 있습니다" : canSaveExpense ? "필수 정보 입력 완료" : "내역 반영 전에 입력해 주세요"}</strong><small>{attachmentProcessingTarget ? "완료되면 내역 반영 버튼이 자동으로 활성화됩니다." : canSaveExpense ? "이제 내역을 반영할 수 있습니다." : missingRequiredFields.join(" · ")}</small></span>
+        {attachmentProcessingTarget || submitBusy ? <LoaderCircle className="spin" size={18} /> : canSaveExpense ? <BadgeCheck size={18} /> : <AlertCircle size={18} />}
+        <span><strong>{submitBusy ? "지출 내역과 첨부 이미지를 저장하고 있습니다" : attachmentProcessingTarget ? "첨부파일을 처리하고 있습니다" : canSaveExpense ? "필수 정보 입력 완료" : "내역 반영 전에 입력해 주세요"}</strong><small>{submitBusy ? "저장이 끝나면 편집창이 자동으로 닫힙니다." : attachmentProcessingTarget ? "완료되면 내역 반영 버튼이 자동으로 활성화됩니다." : canSaveExpense ? "내역 반영 시 이 기기에 바로 저장됩니다." : missingRequiredFields.join(" · ")}</small></span>
       </div>
-      <button className="button accent" onClick={() => onSave(saveDraft, payerName)} disabled={!canSubmitExpense} aria-describedby="expense-save-requirements">{attachmentProcessingTarget ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />} {attachmentProcessingTarget ? "첨부 처리 중" : "내역 반영"}</button>
+      <button className="button accent" onClick={() => void submitExpense()} disabled={!canSubmitExpense} aria-describedby="expense-save-requirements">{attachmentProcessingTarget || submitBusy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />} {submitBusy ? "저장 중" : attachmentProcessingTarget ? "첨부 처리 중" : "내역 반영"}</button>
     </div>
   </div></div></div>{previewAttachment && <AttachmentPreviewModal project={project} attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />}</>;
 }

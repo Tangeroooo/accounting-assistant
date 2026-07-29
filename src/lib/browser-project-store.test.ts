@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createEmptyProject } from "../types";
-import { browserDeleteAsset, browserReadAsset, browserWriteAsset, clearBrowserAssets, replaceBrowserAssets } from "./browser-project-store";
+import { auditBrowserProjectAssets, browserDeleteAsset, browserReadAsset, browserWriteAsset, clearBrowserAssets, replaceBrowserAssets } from "./browser-project-store";
 import { createBarunPackage, parseBarunPackage } from "./project-package";
 
 describe("웹앱 프로젝트 첨부 저장소", () => {
@@ -45,5 +45,37 @@ describe("웹앱 프로젝트 첨부 저장소", () => {
     await browserWriteAsset("attachments/deleted.png", new Uint8Array([1]));
     await browserDeleteAsset("browser://barun-workspace/attachments/deleted.png");
     await expect(browserReadAsset("attachments/deleted.png")).rejects.toThrow("첨부파일을 찾을 수 없습니다");
+  });
+
+  it("자동 복구본의 누락·고아 첨부를 구분한다", async () => {
+    const project = createEmptyProject();
+    project.expenses = [{
+      id: "expense-1",
+      createdOrder: 1,
+      category: "meals",
+      date: "2026-07-20",
+      content: "저녁 식사",
+      amount: 42_000,
+      note: "",
+      receiptMode: "online-printable",
+      originalConfirmed: false,
+      attachments: [
+        { id: "stored", relativePath: "attachments/stored.png", originalName: "stored.png", mimeType: "image/png", kind: "online-receipt" },
+        { id: "missing", relativePath: "attachments/missing.png", originalName: "missing.png", mimeType: "image/png", kind: "other" },
+      ],
+      itemDetails: "",
+      isFuel: false,
+      paymentSource: "team",
+      settlementTargetAmount: 0,
+      settledAmount: 0,
+      settlementStatus: "not-applicable",
+    }];
+    await browserWriteAsset("attachments/stored.png", new Uint8Array([1]));
+    await browserWriteAsset("attachments/orphan.png", new Uint8Array([2]));
+
+    const audit = await auditBrowserProjectAssets(project);
+
+    expect(audit.missingPaths).toEqual(["attachments/missing.png"]);
+    expect(audit.orphanedPaths).toEqual(["attachments/orphan.png"]);
   });
 });

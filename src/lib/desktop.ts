@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Attachment, ProjectData } from "../types";
 import {
+  auditBrowserProjectAssets,
   BROWSER_WORKSPACE,
   browserAssetUrl,
   browserDeleteAsset,
@@ -17,7 +18,7 @@ import {
 } from "./browser-project-store";
 import { BARUN_EXTENSION, createBarunPackage, parseBarunPackage } from "./project-package";
 
-export { BROWSER_WORKSPACE, clearBrowserRecoveryProject, loadBrowserRecoveryProject, saveBrowserRecoveryProject };
+export { auditBrowserProjectAssets, BROWSER_WORKSPACE, clearBrowserRecoveryProject, loadBrowserRecoveryProject, saveBrowserRecoveryProject };
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 

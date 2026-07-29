@@ -1,5 +1,5 @@
 import type { ProjectData } from "../types";
-import { createBarunPackage, parseBarunPackage } from "./project-package";
+import { collectProjectAssetPaths, createBarunPackage, parseBarunPackage } from "./project-package";
 
 export const BROWSER_WORKSPACE = "browser://barun-workspace";
 
@@ -103,6 +103,29 @@ export async function replaceBrowserAssets(nextAssets: Map<string, Uint8Array>) 
   }
 }
 
+export interface BrowserProjectAssetAudit {
+  referencedPaths: string[];
+  missingPaths: string[];
+  orphanedPaths: string[];
+}
+
+export async function auditBrowserProjectAssets(project: ProjectData): Promise<BrowserProjectAssetAudit> {
+  const referencedPaths = collectProjectAssetPaths(project).map(relativeAssetPath);
+  const availablePaths = new Set(assets.keys());
+  if ("indexedDB" in window) {
+    const storedKeys = await withStore<IDBValidKey[]>(ASSET_STORE_NAME, "readonly", (store) => store.getAllKeys());
+    storedKeys.forEach((key) => {
+      if (typeof key === "string") availablePaths.add(relativeAssetPath(key));
+    });
+  }
+  const referenced = new Set(referencedPaths);
+  return {
+    referencedPaths,
+    missingPaths: referencedPaths.filter((path) => !availablePaths.has(path)),
+    orphanedPaths: [...availablePaths].filter((path) => path.startsWith("attachments/") && !referenced.has(path)).sort(),
+  };
+}
+
 export function clearBrowserAssets() {
   assetUrls.forEach((url) => URL.revokeObjectURL(url));
   assetUrls.clear();
@@ -181,9 +204,20 @@ async function withStore<T>(storeName: string, mode: IDBTransactionMode, operati
   try {
     return await new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(storeName, mode);
+      let requestCompleted = false;
+      let result: T;
       const request = operation(transaction.objectStore(storeName));
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        requestCompleted = true;
+        result = request.result;
+      };
       request.onerror = () => reject(request.error ?? new Error("브라우저 저장소 작업에 실패했습니다."));
+      transaction.oncomplete = () => {
+        if (requestCompleted) resolve(result);
+        else reject(new Error("브라우저 저장소 작업이 완료되지 않았습니다."));
+      };
+      transaction.onerror = () => reject(transaction.error ?? new Error("브라우저 저장소 작업에 실패했습니다."));
+      transaction.onabort = () => reject(transaction.error ?? new Error("브라우저 저장소 작업이 취소되었습니다."));
     });
   } finally {
     database.close();
