@@ -83,7 +83,7 @@ import { createAccountingWorkbook } from "./lib/excel-export";
 import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, DEFAULT_IMAGE_LAYOUT, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlineHoldersForExpense, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkDisplayLabel, resizePictureFrame, watermarkFontSizePx, type ReceiptFlowPlacement } from "./lib/receipt-book";
 import { createReceiptBookDocx } from "./lib/receipt-docx";
 import { createReceiptBookPdf, renderReceiptBookPageCanvases } from "./lib/receipt-pdf";
-import { normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
+import { attachmentNeedsImageNormalization, normalizeAttachmentToImages, normalizeProjectAttachmentsToImages } from "./lib/pdf-to-images";
 import AppUpdater from "./components/AppUpdater";
 import MoneyInput from "./components/MoneyInput";
 import ProjectOnboarding from "./components/ProjectOnboarding";
@@ -155,9 +155,12 @@ const EXPENSE_CONTENT_EXAMPLES: Record<CategoryId, string[]> = {
 };
 
 function clipboardImageFile(event: ClipboardEvent) {
-  return Array.from(event.clipboardData?.items ?? [])
-    .find((item) => item.kind === "file" && item.type.startsWith("image/"))
-    ?.getAsFile() ?? undefined;
+  for (const item of Array.from(event.clipboardData?.items ?? [])) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file && (item.type.startsWith("image/") || /\.(?:heic|heif|heics|heifs)$/i.test(file.name))) return file;
+  }
+  return undefined;
 }
 
 function App() {
@@ -172,7 +175,7 @@ function App() {
     }
   });
   const persistedSnapshotRef = useRef(JSON.stringify(project));
-  const pdfMigrationRef = useRef("");
+  const attachmentMigrationRef = useRef("");
   const [browserReady, setBrowserReady] = useState(isTauri());
   const [projectFilePath, setProjectFilePath] = useState<string | undefined>(() => {
     if (!isTauri()) return undefined;
@@ -244,40 +247,45 @@ function App() {
     else localStorage.removeItem("accounting-assistant-project-path");
   }, [projectFilePath]);
 
-  const pdfAttachmentSignature = useMemo(() => [
+  const attachmentMigrationSignature = useMemo(() => [
     ...project.expenses.flatMap((expense) => expense.attachments),
     ...project.categoryEvidence.flatMap((evidence) => evidence.attachments),
   ]
-    .filter((attachment) => attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf"))
+    .filter(attachmentNeedsImageNormalization)
     .map((attachment) => attachment.relativePath)
     .sort()
     .join("|"), [project.expenses, project.categoryEvidence]);
 
   useEffect(() => {
-    if (!browserReady || !project.projectDirectory || !pdfAttachmentSignature) return;
-    const migrationKey = `${project.id}:${project.projectDirectory}:${pdfAttachmentSignature}`;
-    if (pdfMigrationRef.current === migrationKey) return;
-    pdfMigrationRef.current = migrationKey;
+    if (!browserReady || !project.projectDirectory || !attachmentMigrationSignature) return;
+    const migrationKey = `${project.id}:${project.projectDirectory}:${attachmentMigrationSignature}`;
+    if (attachmentMigrationRef.current === migrationKey) return;
+    attachmentMigrationRef.current = migrationKey;
     setSaveState("saving");
     void (async () => {
       const result = await normalizeProjectAttachmentsToImages(project);
-      if (pdfMigrationRef.current !== migrationKey) return;
+      if (attachmentMigrationRef.current !== migrationKey) return;
+      const convertedFileCount = result.convertedPdfCount + result.convertedHeifCount;
       const next = applyDerivedState(result.project);
-      if (result.convertedPdfCount > 0) setProject(next);
+      if (convertedFileCount > 0) setProject(next);
       try {
-        if (result.convertedPdfCount > 0 && projectFilePath) await saveProjectPackage(next, projectFilePath);
-        if (result.convertedPdfCount > 0) persistedSnapshotRef.current = JSON.stringify(next);
+        if (convertedFileCount > 0 && projectFilePath) await saveProjectPackage(next, projectFilePath);
+        if (convertedFileCount > 0) persistedSnapshotRef.current = JSON.stringify(next);
         setSaveState("saved");
       } catch {
         setSaveState("error");
       }
       if (result.failures.length > 0) {
-        setToast(`PDF 이미지 변환 실패: ${result.failures[0]}`);
-      } else if (result.convertedPdfCount > 0) {
-        setToast(`기존 PDF ${result.convertedPdfCount}개를 ${result.generatedImageCount}개 이미지로 바꾸고 프로젝트에 다시 저장했습니다.`);
+        setToast(`첨부 이미지 변환 실패: ${result.failures[0]}`);
+      } else if (convertedFileCount > 0) {
+        const convertedKinds = [
+          result.convertedPdfCount > 0 ? `PDF ${result.convertedPdfCount}개` : "",
+          result.convertedHeifCount > 0 ? `HEIF ${result.convertedHeifCount}개` : "",
+        ].filter(Boolean).join("·");
+        setToast(`기존 ${convertedKinds}를 ${result.generatedImageCount}개 이미지로 바꾸고 프로젝트에 다시 저장했습니다.`);
       }
     })();
-  }, [browserReady, pdfAttachmentSignature, project.id, project.projectDirectory, projectFilePath]);
+  }, [attachmentMigrationSignature, browserReady, project.id, project.projectDirectory, projectFilePath]);
 
   useEffect(() => {
     if (!toast) return;
@@ -949,7 +957,7 @@ function ReceiptBookView({ project, updateProject, onEditExpense, exportFormat, 
       }
       try {
         const attachment = await importClipboardAttachment(project.projectDirectory, file);
-        appendFuelEvidenceAttachments([attachment]);
+        appendFuelEvidenceAttachments(await normalizeAttachmentToImages(project.projectDirectory, attachment));
         setFuelPasteArmed(false);
         setFuelPasteStatus("공통 주유비 산정 증빙에 이미지를 붙여넣었습니다.");
       } catch (error) {
@@ -1123,7 +1131,7 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
 function PrintableAttachment({ project, attachment, alt, frameWidthMm, frameHeightMm, editable = false, ghost = false, onAspectRatio }: { project: ProjectData; attachment: Attachment; alt: string; frameWidthMm: number; frameHeightMm: number; editable?: boolean; ghost?: boolean; onAspectRatio?: (aspectRatio: number) => void }) {
   const { source, failed } = useAttachmentPreviewSource(project, attachment);
   if (!source) return <div className="missing-receipt-placeholder"><FileImage size={25} /><strong>{failed ? "첨부파일을 불러올 수 없습니다" : "첨부파일 불러오는 중"}</strong></div>;
-  if (attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf")) return <div className="missing-receipt-placeholder pdf-conversion-needed"><FileImage size={25} /><strong>PDF 이미지 변환 필요</strong><span>프로젝트를 다시 열면 자동으로 변환합니다.</span></div>;
+  if (attachmentNeedsImageNormalization(attachment)) return <div className="missing-receipt-placeholder pdf-conversion-needed"><FileImage size={25} /><strong>PDF·HEIF 이미지 변환 필요</strong><span>프로젝트를 다시 열면 자동으로 변환합니다.</span></div>;
   const layout = { ...DEFAULT_IMAGE_LAYOUT, ...attachment.layout };
   const geometry = pictureLayoutGeometry(frameWidthMm, frameHeightMm, layout);
   const contentStyle: React.CSSProperties = {
@@ -1229,9 +1237,9 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       if (imported.length === 0) return;
       const attachments = (await Promise.all(imported.map((attachment) => normalizeAttachmentToImages(project.projectDirectory!, attachment)))).flat();
       addAttachments(attachments);
-      const pdfCount = imported.filter((attachment) => attachment.mimeType === "application/pdf").length;
-      onToast(pdfCount > 0
-        ? `${imported.length}개 파일을 가져오고 PDF를 포함한 ${attachments.length}개 이미지를 만들었습니다.`
+      const conversionCount = imported.filter(attachmentNeedsImageNormalization).length;
+      onToast(conversionCount > 0
+        ? `${imported.length}개 파일을 가져오고 PDF·HEIF를 포함한 ${attachments.length}개 이미지를 만들었습니다.`
         : `${attachments.length}개 이미지를 첨부했습니다.`);
     } catch (error) {
       onToast(error instanceof Error ? error.message : "첨부파일을 가져오지 못했습니다.");
@@ -1328,11 +1336,12 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       }
       try {
         const attachment = await importClipboardAttachment(project.projectDirectory, file);
+        const normalized = await normalizeAttachmentToImages(project.projectDirectory, attachment);
         if (clipboardTarget === "fuel") {
-          appendFuelEvidenceAttachments([attachment]);
+          appendFuelEvidenceAttachments(normalized);
           onToast("클립보드 이미지를 공통 주유비 산정 증빙에 붙여넣었습니다.");
         } else {
-          addAttachments([attachment]);
+          addAttachments(normalized);
           onToast("클립보드 이미지를 이 영수증에 붙여넣었습니다.");
         }
         setClipboardTarget(null);
@@ -1399,7 +1408,7 @@ function ExpenseEditor({ project, expense, updateProject, onToast, onClose, onSa
       {!fuelEvidence?.attachments.length && !fuelEvidence?.offlineHolders?.length && <div className="fuel-evidence-empty"><AlertCircle size={15} /> 온라인 파일을 첨부하거나 오프라인 부착칸을 하나 이상 추가해 주세요. 둘 다 여러 개 사용할 수 있습니다.</div>}
     </div>}
     <div className="editor-section"><div className="section-title"><div><span>영수증 형태</span><small>실물 원본은 실제 크기와 비슷하게 부착 영역을 만들고, 온라인 영수증은 이미지로 출력합니다.</small></div></div><div className="choice-cards"><button className={draft.receiptMode === "offline-original" ? "selected" : ""} onClick={() => setDraft((current) => ({ ...current, receiptMode: "offline-original", offlineHolders: offlineHoldersForExpense(current), attachments: current.attachments.map((attachment) => ({ ...attachment, kind: "offline-preview" })) }))}><ReceiptText size={22} /><strong>오프라인 실물</strong><span>출력 후 원본 부착</span></button><button className={draft.receiptMode === "online-printable" ? "selected" : ""} onClick={() => setDraft((current) => ({ ...current, receiptMode: "online-printable", attachments: current.attachments.map((attachment, index) => attachment.kind === "offline-preview" ? { ...attachment, kind: index === 0 ? "online-receipt" : "other" } : attachment) }))}><FileImage size={22} /><strong>온라인 자료</strong><span>이미지 함께 출력</span></button></div>{draft.receiptMode === "offline-original" && <><label className="original-confirm"><input type="checkbox" checked={draft.originalConfirmed} onChange={(event) => update("originalConfirmed", event.target.checked)} /><Check size={15} /><span>제출할 실물 영수증 원본을 보관 중입니다.</span></label><div className="offline-holder-setup"><div className="offline-holder-heading"><span><strong>실물 부착칸 {offlineHolders.length}개</strong><small>영수증이 크면 접지 말고, 잘라 붙일 조각 수만큼 영수증 개수를 추가하세요. 같은 영수증은 1-1, 1-2처럼 표시되며 각 영역은 영수증철에서 cm 크기를 보며 조절할 수 있습니다.</small></span><button type="button" className="button secondary" onClick={addDraftOfflineHolder}><Plus size={15} /> 영수증 추가</button></div>{offlineHolders.map((holder, index) => <div className="offline-holder-row" key={holder.id}><span className="holder-index">{index + 1}</span><strong>실물 조각 {index + 1}</strong><label><span>너비</span><input type="number" min="32" max="190" value={holder.widthMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { widthMm: Math.min(190, Math.max(32, Number(event.target.value) || 32)) })} /><em>mm</em></label><b>×</b><label><span>높이</span><input type="number" min="20" max="262" value={holder.heightMm} onChange={(event) => updateDraftOfflineHolder(holder.id, { heightMm: Math.min(262, Math.max(20, Number(event.target.value) || 20)) })} /><em>mm</em></label><button type="button" className="icon-button" aria-label={`실물 부착칸 ${index + 1} 삭제`} disabled={offlineHolders.length <= 1} onClick={() => removeDraftOfflineHolder(holder.id)}><Trash2 size={14} /></button></div>)}</div></>}
-      {draft.receiptMode === "online-printable" && <><div className={`attachment-box ${clipboardTarget === "receipt" ? "paste-waiting" : ""}`}><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진 또는 PDF"}</strong><small>{project.projectDirectory ? "파일을 선택하거나 클립보드 버튼을 누른 뒤 이미지를 붙여넣으세요." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><button type="button" className={`button secondary attachment-action-button clipboard-arm-button ${clipboardTarget === "receipt" ? "active" : ""}`} aria-pressed={clipboardTarget === "receipt"} onClick={() => armClipboardPaste("receipt")} disabled={!project.projectDirectory}><ClipboardPaste size={16} /> {clipboardTarget === "receipt" ? "붙여넣기 대기 중 · ⌘V / Ctrl+V" : "클립보드 붙여넣기"}</button><button className="button secondary attachment-action-button" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 여러 개 선택</button></div>{clipboardTarget === "receipt" && <div className="clipboard-waiting-message receipt"><ClipboardPaste size={15} /><span><strong>이 영수증에 붙여넣습니다</strong><small>이제 ⌘V / Ctrl+V를 누르세요. 한 장을 붙이면 대기 상태가 자동으로 끝납니다.</small></span></div>}{draft.attachments.map((attachment, index) => <div className="attachment-row" key={attachment.id}><span className="attachment-sequence" aria-label={`첨부 순서 ${index + 1}`}>{index + 1}</span><button type="button" className="attachment-preview-trigger" onClick={() => { setInlineAttachmentId(attachment.id); setPreviewAttachment(attachment); }} title="클릭하여 확대 보기"><span className="attachment-file-icon"><FileImage size={15} /></span><span className="attachment-file-copy"><strong>{attachment.originalName}</strong><small>클릭하여 크게 보기</small></span></button><label className="attachment-kind-field"><span>자료 유형</span><select aria-label={`${attachment.originalName} 자료 유형`} value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select></label><div className="attachment-row-actions"><div className="attachment-order-controls" role="group" aria-label={`${attachment.originalName} 순서 변경`}><button type="button" title="위로 이동" aria-label={`${attachment.originalName} 위로 이동`} disabled={index === 0} onClick={() => moveAttachment(attachment.id, -1)}><ChevronUp size={14} /></button><button type="button" title="아래로 이동" aria-label={`${attachment.originalName} 아래로 이동`} disabled={index === draft.attachments.length - 1} onClick={() => moveAttachment(attachment.id, 1)}><ChevronDown size={14} /></button></div><button type="button" className="attachment-delete-button" title="첨부 삭제" aria-label={`${attachment.originalName} 첨부파일 삭제`} onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><Trash2 size={14} /></button></div></div>)}</>}
+      {draft.receiptMode === "online-printable" && <><div className={`attachment-box ${clipboardTarget === "receipt" ? "paste-waiting" : ""}`}><div><ScanLine size={23} /><span><strong>{draft.attachments.length ? `${draft.attachments.length}개 첨부됨` : "영수증 사진·PDF·아이폰 HEIF"}</strong><small>{project.projectDirectory ? "파일을 선택하거나 클립보드 버튼을 누른 뒤 이미지를 붙여넣으세요." : "프로젝트를 먼저 저장하면 첨부할 수 있습니다."}</small></span></div><button type="button" className={`button secondary attachment-action-button clipboard-arm-button ${clipboardTarget === "receipt" ? "active" : ""}`} aria-pressed={clipboardTarget === "receipt"} onClick={() => armClipboardPaste("receipt")} disabled={!project.projectDirectory}><ClipboardPaste size={16} /> {clipboardTarget === "receipt" ? "붙여넣기 대기 중 · ⌘V / Ctrl+V" : "클립보드 붙여넣기"}</button><button className="button secondary attachment-action-button" onClick={attach} disabled={!project.projectDirectory}><Plus size={16} /> 파일 여러 개 선택</button></div>{clipboardTarget === "receipt" && <div className="clipboard-waiting-message receipt"><ClipboardPaste size={15} /><span><strong>이 영수증에 붙여넣습니다</strong><small>이제 ⌘V / Ctrl+V를 누르세요. 한 장을 붙이면 대기 상태가 자동으로 끝납니다.</small></span></div>}{draft.attachments.map((attachment, index) => <div className="attachment-row" key={attachment.id}><span className="attachment-sequence" aria-label={`첨부 순서 ${index + 1}`}>{index + 1}</span><button type="button" className="attachment-preview-trigger" onClick={() => { setInlineAttachmentId(attachment.id); setPreviewAttachment(attachment); }} title="클릭하여 확대 보기"><span className="attachment-file-icon"><FileImage size={15} /></span><span className="attachment-file-copy"><strong>{attachment.originalName}</strong><small>클릭하여 크게 보기</small></span></button><label className="attachment-kind-field"><span>자료 유형</span><select aria-label={`${attachment.originalName} 자료 유형`} value={attachment.kind} onChange={(event) => update("attachments", draft.attachments.map((item) => item.id === attachment.id ? { ...item, kind: event.target.value as Attachment["kind"] } : item))}><option value="online-receipt">영수증</option><option value="card-slip">카드전표</option><option value="transaction-statement">거래명세서</option><option value="order-detail">주문상세</option><option value="insurance-certificate">보험증권</option><option value="transfer-proof">이체확인</option><option value="other">기타</option></select></label><div className="attachment-row-actions"><div className="attachment-order-controls" role="group" aria-label={`${attachment.originalName} 순서 변경`}><button type="button" title="위로 이동" aria-label={`${attachment.originalName} 위로 이동`} disabled={index === 0} onClick={() => moveAttachment(attachment.id, -1)}><ChevronUp size={14} /></button><button type="button" title="아래로 이동" aria-label={`${attachment.originalName} 아래로 이동`} disabled={index === draft.attachments.length - 1} onClick={() => moveAttachment(attachment.id, 1)}><ChevronDown size={14} /></button></div><button type="button" className="attachment-delete-button" title="첨부 삭제" aria-label={`${attachment.originalName} 첨부파일 삭제`} onClick={() => update("attachments", draft.attachments.filter((item) => item.id !== attachment.id))}><Trash2 size={14} /></button></div></div>)}</>}
     </div>
     <div className="editor-section internal-section"><div className="section-title"><div><span>누가 결제했나요? <em>앱 내부 전용</em></span><small>기본은 팀비입니다. 팀원이 먼저 냈을 때만 이름을 입력하세요.</small></div></div><div className="choice-cards payment"><button className={draft.paymentSource === "team" ? "selected" : ""} onClick={() => update("paymentSource", "team")}><WalletCards size={20} /><span><strong>팀비로 결제</strong><small>별도 정산 없음</small></span></button><button className={draft.paymentSource === "personal" ? "selected" : ""} onClick={() => update("paymentSource", "personal")}><Users size={20} /><span><strong>개인이 먼저 결제</strong><small>나중에 돌려줄 금액</small></span></button></div>{draft.paymentSource === "personal" && <div className="payer-inline"><label className="field"><span>먼저 결제한 사람</span><input list="known-payers" value={payerName} onChange={(event) => { const name = event.target.value; setPayerName(name); const existing = project.people.find((person) => person.name === name); update("payerId", existing?.id); }} placeholder="이름을 바로 입력하세요" /><datalist id="known-payers">{project.people.filter((person) => person.name.trim()).map((person) => <option value={person.name} key={person.id} />)}</datalist><small>{project.people.some((person) => person.name === payerName) ? "기존 정산 대상자를 선택했습니다." : payerName.trim() ? "새 이름은 내역 반영 시 자동 등록됩니다." : "설정에서 미리 추가할 필요가 없습니다."}</small></label><div className="field-grid settlement-fields"><MoneyField label="돌려줄 금액" value={draft.settlementTargetAmount || draft.amount} onChange={(value) => update("settlementTargetAmount", value)} /><MoneyField label="이미 돌려준 금액" value={draft.settledAmount} onChange={(value) => update("settledAmount", value)} /></div></div>}<div className="internal-caption"><BadgeCheck size={15} /> 이름과 정산 정보는 공식 Excel과 영수증철에 표시되지 않습니다.</div></div>
   </div></div><div className="drawer-footer">
@@ -1426,10 +1435,10 @@ function ExpenseEvidencePane({ project, expense, attachment, clipboardPasteArmed
 
 function InlineExpenseAttachmentPreview({ project, attachment, onExpand }: { project: ProjectData; attachment: Attachment; onExpand: () => void }) {
   const { source, failed } = useAttachmentPreviewSource(project, attachment);
-  const isPdf = attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf");
-  return <>{source && !isPdf
+  const needsConversion = attachmentNeedsImageNormalization(attachment);
+  return <>{source && !needsConversion
     ? <button type="button" className="inline-evidence-image" onClick={onExpand} title="클릭하여 크게 보기"><img src={source} alt={attachment.originalName} /><span><Eye size={15} /> 크게 보기</span></button>
-    : <div className="inline-evidence-loading">{failed || isPdf ? <AlertCircle size={30} /> : <LoaderCircle className="spin" size={30} />}<strong>{isPdf ? "PDF 이미지 변환이 필요합니다" : failed ? "첨부 이미지를 읽지 못했습니다" : "영수증 이미지를 불러오는 중입니다"}</strong><span>{isPdf ? "프로젝트를 다시 열면 이미지 변환을 다시 시도합니다." : failed ? "프로젝트 파일에서 첨부 경로를 확인해 주세요." : attachment.originalName}</span></div>}</>;
+    : <div className="inline-evidence-loading">{failed || needsConversion ? <AlertCircle size={30} /> : <LoaderCircle className="spin" size={30} />}<strong>{needsConversion ? "PDF·HEIF 이미지 변환이 필요합니다" : failed ? "첨부 이미지를 읽지 못했습니다" : "영수증 이미지를 불러오는 중입니다"}</strong><span>{needsConversion ? "프로젝트를 다시 열면 이미지 변환을 다시 시도합니다." : failed ? "프로젝트 파일에서 첨부 경로를 확인해 주세요." : attachment.originalName}</span></div>}</>;
 }
 
 function AttachmentPreviewModal({ project, attachment, onClose }: { project: ProjectData; attachment: Attachment; onClose: () => void }) {
@@ -1437,7 +1446,7 @@ function AttachmentPreviewModal({ project, attachment, onClose }: { project: Pro
   return <div className="attachment-preview-backdrop no-print" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <div className="attachment-preview-modal" role="dialog" aria-modal="true" aria-label={`${attachment.originalName} 미리보기`}>
       <div className="attachment-preview-header"><div><FileImage size={19} /><span><strong>{attachment.originalName}</strong><small>첨부파일 확대 보기</small></span></div><button className="icon-button" aria-label="미리보기 닫기" onClick={onClose}><X size={19} /></button></div>
-      <div className="attachment-preview-body">{source ? attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf") ? <div className="preview-conversion-needed"><FileImage size={36} /><strong>PDF를 이미지로 변환하는 중이거나 변환에 실패했습니다.</strong><span>프로젝트를 다시 열면 자동 변환을 다시 시도합니다.</span></div> : <img src={source} alt={attachment.originalName} /> : <span>{failed ? "첨부 이미지를 읽지 못했습니다. 프로젝트 파일을 다시 열어 주세요." : "첨부 이미지를 불러오는 중입니다."}</span>}</div>
+      <div className="attachment-preview-body">{source ? attachmentNeedsImageNormalization(attachment) ? <div className="preview-conversion-needed"><FileImage size={36} /><strong>PDF·HEIF를 이미지로 변환하는 중이거나 변환에 실패했습니다.</strong><span>프로젝트를 다시 열면 자동 변환을 다시 시도합니다.</span></div> : <img src={source} alt={attachment.originalName} /> : <span>{failed ? "첨부 이미지를 읽지 못했습니다. 프로젝트 파일을 다시 열어 주세요." : "첨부 이미지를 불러오는 중입니다."}</span>}</div>
     </div>
   </div>;
 }

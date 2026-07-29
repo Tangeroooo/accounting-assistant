@@ -21,6 +21,32 @@ export { BROWSER_WORKSPACE, clearBrowserRecoveryProject, loadBrowserRecoveryProj
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
+const ATTACHMENT_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "heic", "heif", "heics", "heifs", "pdf"];
+const BROWSER_ATTACHMENT_ACCEPT = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+  "application/pdf",
+  ...ATTACHMENT_EXTENSIONS.map((extension) => `.${extension}`),
+].join(",");
+
+function attachmentMimeType(fileName: string, hintedType = "") {
+  if (hintedType) return hintedType;
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  if (extension === "pdf") return "application/pdf";
+  if (extension === "png") return "image/png";
+  if (extension === "webp") return "image/webp";
+  if (extension === "heic") return "image/heic";
+  if (extension === "heif") return "image/heif";
+  if (extension === "heics") return "image/heic-sequence";
+  if (extension === "heifs") return "image/heif-sequence";
+  return "image/jpeg";
+}
+
 export async function chooseProjectDirectory() {
   if (!isTauri()) return null;
   const selected = await open({ directory: true, multiple: false, title: "회계 프로젝트 폴더 선택" });
@@ -39,23 +65,23 @@ export async function chooseProjectFile() {
 }
 
 export async function chooseAttachment() {
-  if (!isTauri()) return (await pickBrowserFiles("image/png,image/jpeg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf"))[0] ?? null;
+  if (!isTauri()) return (await pickBrowserFiles(BROWSER_ATTACHMENT_ACCEPT))[0] ?? null;
   const selected = await open({
     directory: false,
     multiple: false,
     title: "영수증 또는 증빙 선택",
-    filters: [{ name: "영수증·증빙", extensions: ["png", "jpg", "jpeg", "webp", "pdf"] }],
+    filters: [{ name: "영수증·증빙", extensions: ATTACHMENT_EXTENSIONS }],
   });
   return typeof selected === "string" ? selected : null;
 }
 
 export async function chooseAttachments() {
-  if (!isTauri()) return pickBrowserFiles("image/png,image/jpeg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf", true);
+  if (!isTauri()) return pickBrowserFiles(BROWSER_ATTACHMENT_ACCEPT, true);
   const selected = await open({
     directory: false,
     multiple: true,
     title: "영수증 또는 증빙 여러 개 선택",
-    filters: [{ name: "영수증·증빙", extensions: ["png", "jpg", "jpeg", "webp", "pdf"] }],
+    filters: [{ name: "영수증·증빙", extensions: ATTACHMENT_EXTENSIONS }],
   });
   return Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
 }
@@ -170,8 +196,7 @@ export async function openProjectDocument(path: string): Promise<{ project: Proj
 async function importAttachmentPath(projectDirectory: string, sourcePath: string): Promise<Attachment> {
   if (!isTauri()) {
     const file = takePickedFile(sourcePath);
-    const extension = file.name.split(".").pop()?.toLowerCase();
-    const mimeType = file.type || (extension === "pdf" ? "application/pdf" : extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg");
+    const mimeType = attachmentMimeType(file.name, file.type);
     const safeName = file.name.replace(/[^0-9A-Za-z가-힣._-]+/g, "-");
     const relativePath = `attachments/file-${crypto.randomUUID()}-${safeName}`;
     browserWriteAsset(relativePath, new Uint8Array(await file.arrayBuffer()));
@@ -182,19 +207,11 @@ async function importAttachmentPath(projectDirectory: string, sourcePath: string
     relativePath: string;
     originalName: string;
   }>("copy_attachment", { sourcePath, projectDir: projectDirectory });
-  const extension = copied.originalName.split(".").pop()?.toLowerCase();
   return {
     id: crypto.randomUUID(),
     relativePath: copied.relativePath,
     originalName: copied.originalName,
-    mimeType:
-      extension === "pdf"
-        ? "application/pdf"
-        : extension === "png"
-          ? "image/png"
-          : extension === "webp"
-            ? "image/webp"
-            : "image/jpeg",
+    mimeType: attachmentMimeType(copied.originalName),
     kind: "online-receipt",
   };
 }
@@ -210,8 +227,17 @@ export async function importAttachments(projectDirectory: string): Promise<Attac
 }
 
 export async function importClipboardAttachment(projectDirectory: string, file: File): Promise<Attachment> {
-  const mimeType = file.type || "image/png";
-  const extension = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
+  const heifFileName = /\.(?:heic|heif|heics|heifs)$/i.test(file.name);
+  const mimeType = attachmentMimeType(file.name, file.type || (heifFileName ? "" : "image/png"));
+  const extension = mimeType === "image/jpeg"
+    ? "jpg"
+    : mimeType === "image/webp"
+      ? "webp"
+      : mimeType === "image/heic" || mimeType === "image/heic-sequence"
+        ? "heic"
+        : mimeType === "image/heif" || mimeType === "image/heif-sequence"
+          ? "heif"
+          : "png";
   const originalName = file.name && !file.name.startsWith("image.") ? file.name : `클립보드-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
   const relativePath = `attachments/clipboard-${crypto.randomUUID()}.${extension}`;
   await writeAttachmentBytes(`${projectDirectory}/${relativePath}`, new Uint8Array(await file.arrayBuffer()));

@@ -25,17 +25,56 @@ function canvasPngBytes(canvas: HTMLCanvasElement) {
 }
 
 function baseName(fileName: string) {
-  return fileName.replace(/\.pdf$/i, "").trim() || "영수증";
+  return fileName.replace(/\.(?:pdf|heic|heif|heics|heifs)$/i, "").trim() || "영수증";
 }
 
 function pdfJsAssetDirectory(directory: "cmaps" | "standard_fonts") {
   return new URL(`${import.meta.env.BASE_URL}pdfjs/${directory}/`, window.location.href).href;
 }
 
+export function isHeifAttachment(attachment: Pick<Attachment, "mimeType" | "originalName">) {
+  return /^image\/hei(?:c|f)(?:-sequence)?$/i.test(attachment.mimeType)
+    || /\.(?:heic|heif|heics|heifs)$/i.test(attachment.originalName);
+}
+
+export function attachmentNeedsImageNormalization(attachment: Pick<Attachment, "mimeType" | "originalName">) {
+  return attachment.mimeType === "application/pdf"
+    || attachment.originalName.toLowerCase().endsWith(".pdf")
+    || isHeifAttachment(attachment);
+}
+
+async function normalizeHeifAttachment(projectDirectory: string, attachment: Attachment) {
+  const sourcePath = attachmentAbsolutePath(projectDirectory, attachment.relativePath);
+  const relativePath = `attachments/heif-${crypto.randomUUID()}.png`;
+  const generatedPath = attachmentAbsolutePath(projectDirectory, relativePath);
+  try {
+    const { heicTo, isHeic } = await import("heic-to/csp");
+    const sourceBytes = await readAttachmentBytes(sourcePath);
+    const sourceFile = new File([sourceBytes as BlobPart], attachment.originalName, {
+      type: attachment.mimeType || "image/heif",
+    });
+    if (!await isHeic(sourceFile)) throw new Error("HEIF 이미지 형식을 확인하지 못했습니다.");
+    const converted = await heicTo({ blob: sourceFile, type: "image/png" });
+    await writeAttachmentBytes(generatedPath, new Uint8Array(await converted.arrayBuffer()));
+    await deleteAttachmentFile(sourcePath);
+    return [{
+      ...attachment,
+      relativePath,
+      originalName: `${baseName(attachment.originalName)}.png`,
+      mimeType: "image/png",
+      layout: attachment.layout ?? { ...DEFAULT_IMAGE_LAYOUT },
+    }];
+  } catch (error) {
+    await deleteAttachmentFile(generatedPath);
+    throw new Error(`HEIF 이미지를 변환하지 못했습니다: ${error instanceof Error ? error.message : "알 수 없는 오류"}`);
+  }
+}
+
 export async function normalizeAttachmentToImages(
   projectDirectory: string,
   attachment: Attachment,
 ): Promise<Attachment[]> {
+  if (isHeifAttachment(attachment)) return normalizeHeifAttachment(projectDirectory, attachment);
   if (attachment.mimeType !== "application/pdf" && !attachment.originalName.toLowerCase().endsWith(".pdf")) return [attachment];
 
   const sourcePath = attachmentAbsolutePath(projectDirectory, attachment.relativePath);
@@ -93,34 +132,38 @@ export async function normalizeAttachmentToImages(
 export interface ProjectPdfMigrationResult {
   project: ProjectData;
   convertedPdfCount: number;
+  convertedHeifCount: number;
   generatedImageCount: number;
   failures: string[];
 }
 
 export async function normalizeProjectAttachmentsToImages(project: ProjectData): Promise<ProjectPdfMigrationResult> {
   if (!project.projectDirectory) {
-    return { project, convertedPdfCount: 0, generatedImageCount: 0, failures: [] };
+    return { project, convertedPdfCount: 0, convertedHeifCount: 0, generatedImageCount: 0, failures: [] };
   }
 
   let convertedPdfCount = 0;
+  let convertedHeifCount = 0;
   let generatedImageCount = 0;
   const failures: string[] = [];
   const normalizeList = async (attachments: Attachment[]) => {
     const normalized: Attachment[] = [];
     for (const attachment of attachments) {
       const isPdf = attachment.mimeType === "application/pdf" || attachment.originalName.toLowerCase().endsWith(".pdf");
-      if (!isPdf) {
+      const isHeif = isHeifAttachment(attachment);
+      if (!isPdf && !isHeif) {
         normalized.push(attachment);
         continue;
       }
       try {
         const images = await normalizeAttachmentToImages(project.projectDirectory!, attachment);
         normalized.push(...images);
-        convertedPdfCount += 1;
+        if (isPdf) convertedPdfCount += 1;
+        if (isHeif) convertedHeifCount += 1;
         generatedImageCount += images.length;
       } catch (error) {
         normalized.push(attachment);
-        failures.push(`${attachment.originalName}: ${error instanceof Error ? error.message : "PDF 변환 실패"}`);
+        failures.push(`${attachment.originalName}: ${error instanceof Error ? error.message : "이미지 변환 실패"}`);
       }
     }
     return normalized;
@@ -138,6 +181,7 @@ export async function normalizeProjectAttachmentsToImages(project: ProjectData):
   return {
     project: { ...project, expenses, categoryEvidence },
     convertedPdfCount,
+    convertedHeifCount,
     generatedImageCount,
     failures,
   };

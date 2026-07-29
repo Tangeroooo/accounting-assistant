@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   deleteAttachmentFile: vi.fn(),
   destroyDocument: vi.fn(),
   getDocument: vi.fn(),
+  heicTo: vi.fn(async () => ({
+    arrayBuffer: async () => new Uint8Array([7, 8, 9]).buffer,
+  } as Blob)),
+  isHeic: vi.fn(async () => true),
   readAttachmentBytes: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
   writeAttachmentBytes: vi.fn(),
 }));
@@ -18,6 +22,10 @@ vi.mock("pdfjs-dist", () => ({
 }));
 
 vi.mock("pdfjs-dist/build/pdf.worker.min.mjs?url", () => ({ default: "pdf-worker.js" }));
+vi.mock("heic-to/csp", () => ({
+  heicTo: mocks.heicTo,
+  isHeic: mocks.isHeic,
+}));
 vi.mock("./desktop", () => ({
   attachmentAbsolutePath: (directory: string, relativePath: string) => `${directory}/${relativePath}`,
   ...mocks,
@@ -33,7 +41,15 @@ const pdfAttachment: Attachment = {
   kind: "online-receipt",
 };
 
-describe("PDF 첨부 이미지 변환", () => {
+const heifAttachment: Attachment = {
+  id: "heif",
+  relativePath: "attachments/source.HEIC",
+  originalName: "아이폰 영수증.HEIC",
+  mimeType: "image/heic",
+  kind: "online-receipt",
+};
+
+describe("PDF·HEIF 첨부 이미지 변환", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getDocument.mockReturnValue({
@@ -76,7 +92,24 @@ describe("PDF 첨부 이미지 변환", () => {
     expect(mocks.writeAttachmentBytes).not.toHaveBeenCalled();
   });
 
-  it("기존 프로젝트의 지출·공통 증빙 PDF도 모두 이미지로 마이그레이션한다", async () => {
+  it("아이폰 HEIF 이미지를 PNG로 바꾸고 원본 파일을 제거한다", async () => {
+    const images = await normalizeAttachmentToImages("/project", heifAttachment);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]).toMatchObject({
+      id: "heif",
+      originalName: "아이폰 영수증.png",
+      mimeType: "image/png",
+      kind: "online-receipt",
+    });
+    expect(images[0].relativePath).toMatch(/^attachments\/heif-.*\.png$/);
+    expect(mocks.isHeic).toHaveBeenCalledOnce();
+    expect(mocks.heicTo).toHaveBeenCalledWith(expect.objectContaining({ type: "image/png" }));
+    expect(mocks.writeAttachmentBytes).toHaveBeenCalledOnce();
+    expect(mocks.deleteAttachmentFile).toHaveBeenCalledWith("/project/attachments/source.HEIC");
+  });
+
+  it("기존 프로젝트의 지출·공통 증빙 PDF와 HEIF를 모두 이미지로 마이그레이션한다", async () => {
     const project = createEmptyProject();
     project.projectDirectory = "/project";
     project.expenses = [{
@@ -89,7 +122,7 @@ describe("PDF 첨부 이미지 변환", () => {
       note: "",
       receiptMode: "online-printable",
       originalConfirmed: false,
-      attachments: [pdfAttachment],
+      attachments: [pdfAttachment, heifAttachment],
       itemDetails: "",
       isFuel: false,
       paymentSource: "team",
@@ -108,7 +141,8 @@ describe("PDF 첨부 이미지 변환", () => {
     const result = await normalizeProjectAttachmentsToImages(project);
 
     expect(result.convertedPdfCount).toBe(2);
-    expect(result.generatedImageCount).toBe(4);
+    expect(result.convertedHeifCount).toBe(1);
+    expect(result.generatedImageCount).toBe(5);
     expect(result.failures).toEqual([]);
     expect(result.project.expenses[0].attachments.every((attachment) => attachment.mimeType === "image/png")).toBe(true);
     expect(result.project.categoryEvidence[0].attachments.every((attachment) => attachment.mimeType === "image/png")).toBe(true);
