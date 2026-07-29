@@ -125,6 +125,16 @@ describe("공식 템플릿 비파괴 내보내기", () => {
 
     const templateSubtotalRows = [10, 14, 23, 28, 33, 39, 41, 46];
     const outputSubtotalRows = [12, 14, 16, 18, 20, 22, 24, 26];
+    const templateCategoryRows = [5, 11, 15, 24, 29, 34, 40, 42];
+    const outputCategoryRows = [5, 13, 15, 17, 19, 21, 23, 25];
+    expect(outputCategoryRows.map((row) => sharedStringCellText(ledgerDocument, sharedValues, `A${row}`)))
+      .toEqual(templateCategoryRows.map((row) => sharedStringCellText(originalLedgerDocument, sharedValues, `A${row}`)));
+    expect(outputCategoryRows.map((row) => ledgerDocument.querySelector(`c[r="A${row}"]`)?.getAttribute("s")))
+      .toEqual(templateCategoryRows.map((row) => originalLedgerDocument.querySelector(`c[r="A${row}"]`)?.getAttribute("s")));
+    expect(sharedStringCellText(ledgerDocument, sharedValues, "A27"))
+      .toBe(sharedStringCellText(originalLedgerDocument, sharedValues, "A47"));
+    expect(ledgerDocument.querySelector('c[r="A27"]')?.getAttribute("s"))
+      .toBe(originalLedgerDocument.querySelector('c[r="A47"]')?.getAttribute("s"));
     const standardSubtotalLabel = sharedStringCellText(originalLedgerDocument, sharedValues, "B10");
     expect(outputSubtotalRows.map((row) => sharedStringCellText(ledgerDocument, sharedValues, `B${row}`)))
       .toEqual(outputSubtotalRows.map(() => standardSubtotalLabel));

@@ -480,7 +480,11 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
           column,
           rowIndex,
         );
-        if (column === "A" && offset === 0) setText(document, cell, getCategory(definition.id).label);
+        // 구분명은 "1. 교통비", "7. 헌  금", "8, 잡  비"처럼 번호·문장부호·
+        // 공백까지 공식 템플릿에 정의되어 있으므로 새 문자열을 만들지 않는다.
+        if (column === "A" && offset === 0 && sources.first.A) {
+          copyRawCellContent(cell, sources.first.A);
+        }
         if (expense) {
           if (column === "B") setText(document, cell, formatLedgerDate(expense.date));
           if (column === "C") setText(document, cell, expenseContent(expense));
@@ -530,7 +534,10 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   setRowHeight(row, 16.5);
   for (const column of ["A", "B", "C", "D", "E", "F"]) {
     const cell = cloneCell(document, grandTotalSources[column], column, grandTotalRow);
-    if (column === "A") setText(document, cell, "지출합계");
+    // "총 지 출 액" 문구와 서식을 템플릿 그대로 보존한다.
+    if (column === "A" && grandTotalSources.A) {
+      copyRawCellContent(cell, grandTotalSources.A);
+    }
     if (column === "C") {
       setFormula(
         document,
