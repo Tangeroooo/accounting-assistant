@@ -154,10 +154,11 @@ const expenseContent = (expense: Expense) => {
   const content = expense.content.trim().replace(/^\[[^\]]+\]\s*/, "");
   const taggedContent = `[${category}] ${content}`;
   const details = expense.itemDetails.trim();
+  const completeContent = details ? `${taggedContent}_${details}` : taggedContent;
   if (expense.category === "meals" && expense.mealHeadcount) {
-    return `${taggedContent}_${expense.mealHeadcount}명${details ? `_${details}` : ""}`;
+    return `${completeContent}_총 ${expense.mealHeadcount}명`;
   }
-  return details ? `${taggedContent}_${details}` : taggedContent;
+  return completeContent;
 };
 
 const excelCharacterWidth = (character: string) => {

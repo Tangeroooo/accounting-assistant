@@ -44,6 +44,34 @@ const makeExpense = (index: number): Expense => ({
 afterEach(() => vi.unstubAllGlobals());
 
 describe("공식 템플릿 비파괴 내보내기", () => {
+  it("식사 인원을 모든 품목 뒤에 '총 N명' 형식으로 붙인다", async () => {
+    const originalBytes = await readFile(templatePath);
+    vi.stubGlobal("fetch", async () => new Response(originalBytes));
+
+    const project = createEmptyProject();
+    project.expenses = [{
+      ...makeExpense(1),
+      category: "meals",
+      content: "팀전체 점심 식사_추어탕*8개",
+      itemDetails: "청국장*1개",
+      mealHeadcount: 9,
+    }];
+
+    const outputZip = await JSZip.loadAsync(await createAccountingWorkbook(project));
+    const sharedStrings = new DOMParser().parseFromString(
+      await outputZip.file("xl/sharedStrings.xml")!.async("string"),
+      "application/xml",
+    );
+    const sharedValues = sharedStringValues(sharedStrings);
+    const ledger = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet3.xml")!.async("string"),
+      "application/xml",
+    );
+
+    expect(sharedStringCellText(ledger, sharedValues, "C9"))
+      .toBe("[식대간식비] 팀전체 점심 식사_추어탕*8개_청국장*1개_총 9명");
+  });
+
   it("원본은 그대로 두고 금전출납부 행을 실제 영수증 건수에 맞추며 샘플을 보존한다", async () => {
     const originalBytes = await readFile(templatePath);
     const beforeHash = createHash("sha256").update(originalBytes).digest("hex");
