@@ -138,6 +138,18 @@ function drawOfflinePlaceholder(
   const x = bounds.x + (bounds.width - width) / 2;
   const y = bounds.y + (bounds.height - height) / 2;
   context.save();
+  const inset = mm(10);
+  if (bounds.width > inset * 2 && bounds.height > inset * 2) {
+    context.strokeStyle = "#c4c9d1";
+    context.lineWidth = Math.max(1, mm(0.25));
+    context.setLineDash([mm(5), mm(3)]);
+    context.strokeRect(
+      bounds.x + inset,
+      bounds.y + inset,
+      bounds.width - inset * 2,
+      bounds.height - inset * 2,
+    );
+  }
   context.strokeStyle = "#9ca3af";
   context.lineWidth = Math.max(1, mm(0.2));
   context.setLineDash([mm(1.2), mm(1.2)]);

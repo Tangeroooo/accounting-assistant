@@ -1203,6 +1203,8 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
     "--offline-guide-pad-y": `${Math.max(0.5, Math.min(1.4, placement.heightMm / 50))}mm`,
     "--offline-guide-pad-x": `${Math.max(0.8, Math.min(2, placement.widthMm / 50))}mm`,
   } as React.CSSProperties : undefined;
+  const offlineInsetGuideWidthMm = placement.widthMm - 20;
+  const offlineInsetGuideHeightMm = placement.heightMm - 20;
   const receiptCode = evidenceId
     ? `주유비 산정 증빙${offlineHolder ? ` · 오프라인 ${holderIndex + 1}/${offlineHolders.length}` : " · 온라인"}`
     : `${category.number}-${receiptNumber}${offlineHolder && offlineHolders.length > 1 ? ` · 실물 ${holderIndex + 1}/${offlineHolders.length}` : supporting ? " · 추가" : ""}`;
@@ -1211,6 +1213,7 @@ function ReceiptTile({ project, placement, selected, cropMode, onSelectAttachmen
     {cropMode && attachment && <PrintableAttachment project={project} attachment={attachment} alt="자르기 중인 원본 그림" frameWidthMm={placement.widthMm} frameHeightMm={placement.heightMm} ghost />}
     <div className="receipt-tile-body" onPointerDown={(event) => attachment && onPointerDown(event, attachment.id)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClick={() => attachment ? onSelectAttachment(attachment.id) : offlineHolder && onSelectOfflineHolder(offlineHolder.id)}>
       {(attachment || offlineHolder) && <div className="receipt-screen-tag no-print" style={watermarkStyle}><strong>{watermarkLabel}</strong><small>이 라벨은 내보낸 PDF·Word에는 포함되지 않습니다</small></div>}
+      {offlineHolder && offlineInsetGuideWidthMm > 0 && offlineInsetGuideHeightMm > 0 && <svg className="offline-inset-guide" aria-hidden="true" style={{ left: "10mm", top: "10mm", width: `${offlineInsetGuideWidthMm}mm`, height: `${offlineInsetGuideHeightMm}mm` }} viewBox={`0 0 ${offlineInsetGuideWidthMm} ${offlineInsetGuideHeightMm}`} preserveAspectRatio="none"><rect x="0.3" y="0.3" width={Math.max(0, offlineInsetGuideWidthMm - 0.6)} height={Math.max(0, offlineInsetGuideHeightMm - 0.6)} /></svg>}
       {offlineHolder && <span className={`offline-holder-dimensions no-print ${compactOfflineGuide ? "compact" : ""}`} style={holderDimensionsStyle}>{holderDimensionsLabel}</span>}
       {offlineHolder && <div className={`offline-holder-guide no-print ${compactOfflineGuide ? "compact" : ""}`} style={holderGuideStyle}>
         <AlertCircle size={compactOfflineGuide ? 12 : 16} />
