@@ -1640,17 +1640,20 @@ function DeferredNumberInput({ ariaLabel, value, min, max, step, onCommit }: { a
     onCommit(normalized);
   };
   return <input
-    type="text"
+    type="number"
     inputMode="decimal"
     aria-label={ariaLabel}
-    data-min={min}
-    data-max={max}
-    data-step={step}
+    min={min}
+    max={max}
+    step={step}
     value={draft}
     onFocus={() => setEditing(true)}
     onChange={(event) => {
       const next = event.currentTarget.value.replace(",", ".");
-      if (/^\d*(?:\.\d*)?$/.test(next)) setDraft(next);
+      if (!/^\d*(?:\.\d*)?$/.test(next)) return;
+      setDraft(next);
+      const parsed = Number(next);
+      if (next !== "" && Number.isFinite(parsed) && parsed >= min && parsed <= max) onCommit(parsed);
     }}
     onBlur={() => { setEditing(false); commit(); }}
     onKeyDown={(event) => {
