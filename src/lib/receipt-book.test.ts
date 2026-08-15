@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyProject, type Expense } from "../types";
-import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, exportedOfflinePlaceholderLabel, layoutReceiptBookItems, offlineHolderDimensionsLabel, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptWatermarkDisplayLabel, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
+import { buildReceiptBookItems, centeredColumnResizeOffset, cropPictureFrame, exportedOfflinePlaceholderLabel, layoutReceiptBookItems, normalizeReceiptBookSideMarginMm, offlineHolderDimensionsLabel, offlinePlaceholderLabel, pictureLayoutGeometry, receiptAmountLabel, receiptBookFlowWidthMm, receiptWatermarkDisplayLabel, receiptWatermarkLabel, resizePictureFrame, watermarkFontSizePx } from "./receipt-book";
 
 const expense = (index: number): Expense => ({
   id: `expense-${index}`,
@@ -24,6 +24,19 @@ const expense = (index: number): Expense => ({
 });
 
 describe("영수증철 페이지 구성", () => {
+  it("기존 프로젝트는 좌우 10mm를 유지하고 사용자가 정한 여백에 맞춰 배치 폭을 계산한다", () => {
+    expect(normalizeReceiptBookSideMarginMm()).toBe(10);
+    expect(receiptBookFlowWidthMm()).toBe(190);
+    expect(receiptBookFlowWidthMm(20)).toBe(170);
+    expect(normalizeReceiptBookSideMarginMm(-5)).toBe(0);
+    expect(normalizeReceiptBookSideMarginMm(90)).toBe(40);
+
+    const project = createEmptyProject();
+    project.expenses = [{ ...expense(1), offlineHolders: [{ id: "custom-margin", widthMm: 100, heightMm: 90 }] }];
+    const placement = layoutReceiptBookItems(buildReceiptBookItems(project), undefined, receiptBookFlowWidthMm(20))[0][0];
+    expect(placement.xMm).toBe(35);
+  });
+
   it("가변 크기 영수증을 금전출납부 순서대로 배치하고 A4 높이를 넘으면 다음 페이지로 보낸다", () => {
     const project = createEmptyProject();
     project.expenses = Array.from({ length: 10 }, (_, index) => expense(index + 1));

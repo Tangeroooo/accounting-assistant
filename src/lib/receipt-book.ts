@@ -1,6 +1,10 @@
 import { getCategory, type Attachment, type Expense, type OfflineReceiptHolder, type ProjectData } from "../types";
 
-export const RECEIPT_FLOW_WIDTH_MM = 190;
+export const RECEIPT_PAGE_WIDTH_MM = 210;
+export const DEFAULT_RECEIPT_BOOK_SIDE_MARGIN_MM = 10;
+export const MIN_RECEIPT_BOOK_SIDE_MARGIN_MM = 0;
+export const MAX_RECEIPT_BOOK_SIDE_MARGIN_MM = 40;
+export const RECEIPT_FLOW_WIDTH_MM = RECEIPT_PAGE_WIDTH_MM - DEFAULT_RECEIPT_BOOK_SIDE_MARGIN_MM * 2;
 export const RECEIPT_FLOW_HEIGHT_MM = 262;
 export const RECEIPT_FLOW_GAP_MM = 4;
 export const DEFAULT_IMAGE_LAYOUT = {
@@ -165,13 +169,23 @@ function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm, cropMode }: {
+export function normalizeReceiptBookSideMarginMm(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_RECEIPT_BOOK_SIDE_MARGIN_MM;
+  return clamp(value, MIN_RECEIPT_BOOK_SIDE_MARGIN_MM, MAX_RECEIPT_BOOK_SIDE_MARGIN_MM);
+}
+
+export function receiptBookFlowWidthMm(sideMarginMm?: number) {
+  return RECEIPT_PAGE_WIDTH_MM - normalizeReceiptBookSideMarginMm(sideMarginMm) * 2;
+}
+
+export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm, cropMode, flowWidthMm = RECEIPT_FLOW_WIDTH_MM }: {
   widthMm: number;
   heightMm: number;
   handle: string;
   deltaXmm: number;
   deltaYmm: number;
   cropMode: boolean;
+  flowWidthMm?: number;
 }) {
   const horizontalDelta = handle.includes("e") ? deltaXmm : handle.includes("w") ? -deltaXmm : 0;
   const verticalDelta = handle.includes("s") ? deltaYmm : handle.includes("n") ? -deltaYmm : 0;
@@ -182,7 +196,7 @@ export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaY
     const verticalRatio = verticalDelta / heightMm;
     const requestedRatio = Math.abs(horizontalRatio) > Math.abs(verticalRatio) ? horizontalRatio : verticalRatio;
     const minimumScale = Math.max(32 / widthMm, 20 / heightMm, 0.25);
-    const maximumScale = Math.min(RECEIPT_FLOW_WIDTH_MM / widthMm, RECEIPT_FLOW_HEIGHT_MM / heightMm);
+    const maximumScale = Math.min(flowWidthMm / widthMm, RECEIPT_FLOW_HEIGHT_MM / heightMm);
     const scale = clamp(1 + requestedRatio, minimumScale, maximumScale);
     nextWidth = widthMm * scale;
     nextHeight = heightMm * scale;
@@ -191,7 +205,7 @@ export function resizePictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaY
     if (verticalDelta !== 0) nextHeight += verticalDelta;
   }
   return {
-    widthMm: clamp(nextWidth, 32, RECEIPT_FLOW_WIDTH_MM),
+    widthMm: clamp(nextWidth, 32, flowWidthMm),
     heightMm: clamp(nextHeight, 20, RECEIPT_FLOW_HEIGHT_MM),
   };
 }
@@ -242,13 +256,14 @@ export function pictureLayoutGeometry(
  * Word/Excel의 자르기처럼 프레임만 바꾸고 원본 그림의 실제 크기는 유지한다.
  * offset은 프레임 중심 기준 백분율이므로 새 프레임 크기에 맞게 환산한다.
  */
-export function cropPictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm, layout }: {
+export function cropPictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm, layout, flowWidthMm = RECEIPT_FLOW_WIDTH_MM }: {
   widthMm: number;
   heightMm: number;
   handle: string;
   deltaXmm: number;
   deltaYmm: number;
   layout: NonNullable<Attachment["layout"]>;
+  flowWidthMm?: number;
 }) {
   const nextFrame = resizePictureFrame({
     widthMm,
@@ -257,6 +272,7 @@ export function cropPictureFrame({ widthMm, heightMm, handle, deltaXmm, deltaYmm
     deltaXmm,
     deltaYmm,
     cropMode: true,
+    flowWidthMm,
   });
   const currentGeometry = pictureLayoutGeometry(widthMm, heightMm, layout);
   const nextBaseGeometry = pictureLayoutGeometry(nextFrame.widthMm, nextFrame.heightMm, { ...layout, scale: 1 });
@@ -299,10 +315,10 @@ export function watermarkFontSizePx(label: string, widthMm: number, heightMm: nu
   return clamp(Math.min(widthLimitedSize, heightLimitedSize), 5, 20);
 }
 
-function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<string, number>) {
+function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<string, number>, flowWidthMm = RECEIPT_FLOW_WIDTH_MM) {
   if (item.offlineHolder) {
     return {
-      widthMm: clamp(item.offlineHolder.widthMm, 32, RECEIPT_FLOW_WIDTH_MM),
+      widthMm: clamp(item.offlineHolder.widthMm, 32, flowWidthMm),
       heightMm: clamp(item.offlineHolder.heightMm, 20, RECEIPT_FLOW_HEIGHT_MM),
     };
   }
@@ -315,7 +331,7 @@ function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<str
   const cosine = Math.abs(Math.cos(rotation));
   const sine = Math.abs(Math.sin(rotation));
   const aspectRatio = (safeAspectRatio * cosine + sine) / (safeAspectRatio * sine + cosine);
-  let widthMm = clamp(layout.widthMm || DEFAULT_IMAGE_LAYOUT.widthMm, 32, RECEIPT_FLOW_WIDTH_MM);
+  let widthMm = clamp(layout.widthMm || DEFAULT_IMAGE_LAYOUT.widthMm, 32, flowWidthMm);
   let heightMm = layout.heightMm && Number.isFinite(layout.heightMm)
     ? clamp(layout.heightMm, 20, RECEIPT_FLOW_HEIGHT_MM)
     : widthMm / aspectRatio;
@@ -330,6 +346,7 @@ function dimensionsForItem(item: ReceiptBookItem, measuredAspectRatios?: Map<str
 export function layoutReceiptBookItems(
   items: ReceiptBookItem[],
   measuredAspectRatios?: Map<string, number>,
+  flowWidthMm = RECEIPT_FLOW_WIDTH_MM,
 ): ReceiptFlowPlacement[][] {
   const pages: ReceiptFlowPlacement[][] = [];
   let page: ReceiptFlowPlacement[] = [];
@@ -350,7 +367,7 @@ export function layoutReceiptBookItems(
     const naturalLeftMm = Math.min(...columnPositions);
     const naturalRightMm = Math.max(...columnPositions.map((columnX) => columnX + (columnWidths.get(columnX) ?? 0)));
     const pageContentWidthMm = naturalRightMm - naturalLeftMm;
-    const pageCenterOffsetMm = (RECEIPT_FLOW_WIDTH_MM - pageContentWidthMm) / 2 - naturalLeftMm;
+    const pageCenterOffsetMm = (flowWidthMm - pageContentWidthMm) / 2 - naturalLeftMm;
     pages.push(page.map((placement) => {
       const layout = placement.item.attachment
         ? { ...DEFAULT_IMAGE_LAYOUT, ...placement.item.attachment.layout }
@@ -371,7 +388,7 @@ export function layoutReceiptBookItems(
 
   const flushColumn = () => {
     if (column.length === 0) return;
-    if (page.length > 0 && xMm + columnWidthMm > RECEIPT_FLOW_WIDTH_MM + 0.001) {
+    if (page.length > 0 && xMm + columnWidthMm > flowWidthMm + 0.001) {
       commitPage();
     }
     let yMm = 0;
@@ -391,7 +408,7 @@ export function layoutReceiptBookItems(
       commitPage();
       currentCategory = item.expense.category;
     }
-    const dimensions = dimensionsForItem(item, measuredAspectRatios);
+    const dimensions = dimensionsForItem(item, measuredAspectRatios, flowWidthMm);
     const nextHeight = columnHeightMm
       + (column.length > 0 ? RECEIPT_FLOW_GAP_MM : 0)
       + dimensions.heightMm;

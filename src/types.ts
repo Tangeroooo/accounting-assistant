@@ -134,6 +134,8 @@ export interface ProjectData {
   people: Person[];
   expenses: Expense[];
   categoryEvidence: CategoryEvidence[];
+  /** 영수증철 A4 용지의 한쪽 좌우 여백(mm). 기존 프로젝트는 10mm로 처리한다. */
+  receiptBookSideMarginMm?: number;
   receiptNumbersFinalized: boolean;
   updatedAt: string;
 }
@@ -180,6 +182,7 @@ export const createEmptyProject = (): ProjectData => ({
   people: [],
   expenses: [],
   categoryEvidence: [],
+  receiptBookSideMarginMm: 10,
   receiptNumbersFinalized: false,
   updatedAt: new Date().toISOString(),
 });

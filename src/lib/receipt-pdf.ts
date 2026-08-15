@@ -10,6 +10,8 @@ import {
   DEFAULT_IMAGE_LAYOUT,
   exportedOfflinePlaceholderLabel,
   layoutReceiptBookItems,
+  normalizeReceiptBookSideMarginMm,
+  receiptBookFlowWidthMm,
   receiptAmountLabel,
 } from "./receipt-book";
 
@@ -174,7 +176,8 @@ export async function renderReceiptBookObjectPages(project: ProjectData): Promis
     renderedAttachments.set(item.attachment.id, rendered);
     measuredAspectRatios.set(item.attachment.id, rendered.width / rendered.height);
   }
-  const pages = layoutReceiptBookItems(items, measuredAspectRatios);
+  const sideMarginMm = normalizeReceiptBookSideMarginMm(project.receiptBookSideMarginMm);
+  const pages = layoutReceiptBookItems(items, measuredAspectRatios, receiptBookFlowWidthMm(sideMarginMm));
   if (pages.length === 0) throw new Error("내보낼 영수증이 없습니다.");
   const title = `${project.meta.community || "○○○"} 공동체 - 국내 ${project.meta.teamName || "○○○팀"} - 영수증철`;
 
@@ -197,7 +200,7 @@ export async function renderReceiptBookObjectPages(project: ProjectData): Promis
       }
       return [{
         canvas: objectCanvas,
-        xMm: 10 + placement.xMm,
+        xMm: sideMarginMm + placement.xMm,
         yMm: 25 + placement.yMm,
         widthMm: placement.widthMm,
         heightMm: placement.heightMm,
