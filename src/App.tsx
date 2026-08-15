@@ -1640,12 +1640,12 @@ function DeferredNumberInput({ ariaLabel, value, min, max, step, onCommit }: { a
     onCommit(normalized);
   };
   return <input
-    type="number"
+    type="text"
     inputMode="decimal"
     aria-label={ariaLabel}
-    min={min}
-    max={max}
-    step={step}
+    data-min={min}
+    data-max={max}
+    data-step={step}
     value={draft}
     onFocus={() => setEditing(true)}
     onChange={(event) => {
