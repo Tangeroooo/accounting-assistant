@@ -11,6 +11,18 @@ describe("금액 입력", () => {
   it("숫자값을 세 자리 콤마 형식으로 표시한다", () => {
     expect(formatMoneyInput(1_234_567)).toBe("1,234,567");
     expect(parseMoneyInput("1,234,567원")).toBe(1_234_567);
+    expect(formatMoneyInput(1_234.56789)).toBe("1,234.56789");
+    expect(parseMoneyInput("₹1,234.56789")).toBe(1_234.56789);
+  });
+
+  it("원·루피·엔에 사용할 소수점을 입력 중에도 유지한다", () => {
+    const onChange = vi.fn();
+    render(<MoneyInput aria-label="해외 금액" value={0} onChange={onChange} />);
+    const input = screen.getByRole("textbox", { name: "해외 금액" }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "8400.25", selectionStart: 7 } });
+    expect(input.value).toBe("8,400.25");
+    expect(onChange).toHaveBeenLastCalledWith(8_400.25);
   });
 
   it("수정 중인 값에도 콤마를 적용하고 숫자값만 전달한다", () => {

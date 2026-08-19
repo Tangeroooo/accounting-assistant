@@ -8,6 +8,15 @@ import {
   type SettlementSummary,
   type ValidationIssue,
 } from "../types";
+import {
+  expenseAmountKrw,
+  expenseCurrency,
+  formatDecimalAmount,
+  hasExchangeRateForCurrency,
+  projectAccountingRegion,
+  projectExchangeRates,
+  roundMoney,
+} from "./currency";
 
 export function assignPayerFromExpense(people: Person[], expense: Expense, payerName?: string) {
   const normalizedName = payerName?.trim();
@@ -21,7 +30,8 @@ export function assignPayerFromExpense(people: Person[], expense: Expense, payer
     expense: {
       ...expense,
       payerId,
-      settlementTargetAmount: expense.settlementTargetAmount || expense.amount,
+      settlementTargetAmount: expense.settlementTargetAmount || expenseAmountKrw(expense),
+      settlementTargetMode: expense.settlementTargetMode ?? "auto",
     },
   };
 }
@@ -72,20 +82,24 @@ export function expenseForSaveFromEditor(
     : { ...draft, content: original.content, itemDetails: original.itemDetails };
 }
 
-export function expenseTotals(expenses: Expense[]) {
+export function expenseTotals(expenses: Expense[], exchangeRatesToKrw?: ProjectData["exchangeRatesToKrw"]) {
   const byCategory = Object.fromEntries(
     CATEGORY_DEFINITIONS.map((category) => [category.id, 0]),
   ) as Record<CategoryId, number>;
 
-  for (const expense of expenses) byCategory[expense.category] += expense.amount;
-  const total = Object.values(byCategory).reduce((sum, amount) => sum + amount, 0);
+  for (const expense of expenses) {
+    byCategory[expense.category] = roundMoney(
+      byCategory[expense.category] + expenseAmountKrw(expense, exchangeRatesToKrw),
+    );
+  }
+  const total = roundMoney(Object.values(byCategory).reduce((sum, amount) => sum + amount, 0));
   return { byCategory, total };
 }
 
-export function teamMinistryExpenseTotal(expenses: Expense[]) {
+export function teamMinistryExpenseTotal(expenses: Expense[], exchangeRatesToKrw?: ProjectData["exchangeRatesToKrw"]) {
   return expenses
     .filter((expense) => expense.category === "teamMinistry")
-    .reduce((sum, expense) => sum + Math.max(0, expense.amount), 0);
+    .reduce((sum, expense) => roundMoney(sum + expenseAmountKrw(expense, exchangeRatesToKrw)), 0);
 }
 
 export function incomeTotals(project: ProjectData) {
@@ -93,7 +107,7 @@ export function incomeTotals(project: ProjectData) {
     .filter((income) => income.type === "dues")
     .reduce((sum, income) => sum + income.amount, 0);
   const dues = Number.isFinite(project.duesPerPerson)
-    ? Math.max(0, project.duesPerPerson) * Math.max(0, project.meta.headcount)
+    ? roundMoney(Math.max(0, project.duesPerPerson) * Math.max(0, project.meta.headcount))
     : storedDues;
   const teamSupport = project.incomes
     .filter((income) => income.type === "teamSupport")
@@ -101,22 +115,23 @@ export function incomeTotals(project: ProjectData) {
   const flowing = project.incomes
     .filter((income) => income.type === "flowing")
     .reduce((sum, income) => sum + income.amount, 0);
-  return { dues, teamSupport, flowing, total: dues + teamSupport + flowing };
+  return { dues, teamSupport, flowing, total: roundMoney(dues + teamSupport + flowing) };
 }
 
 export function reconciliationSummary(project: ProjectData) {
   const income = incomeTotals(project);
-  const expense = expenseTotals(project.expenses);
-  const teamMinistryAmount = teamMinistryExpenseTotal(project.expenses);
+  const exchangeRatesToKrw = projectExchangeRates(project);
+  const expense = expenseTotals(project.expenses, exchangeRatesToKrw);
+  const teamMinistryAmount = teamMinistryExpenseTotal(project.expenses, exchangeRatesToKrw);
   const returnAmount = Math.max(income.teamSupport - teamMinistryAmount, 0);
-  const difference = income.total - expense.total - returnAmount;
+  const difference = roundMoney(income.total - expense.total - returnAmount);
   return { income, expense, teamMinistryAmount, returnAmount, difference };
 }
 
 const AUTO_TEAM_MINISTRY_NOTE = /^팀별사역지원금 [\d.,]+원(?:\n팀회비\n[\d.,]+원 사용)?$/;
 
 const formatTemplateAmount = (amount: number) =>
-  Math.max(0, Math.trunc(amount)).toLocaleString("ko-KR").replaceAll(",", ".");
+  formatDecimalAmount(Math.max(0, amount)).replaceAll(",", ".");
 
 export function isAutoTeamMinistryNote(note: string) {
   return AUTO_TEAM_MINISTRY_NOTE.test(note.trim());
@@ -132,12 +147,16 @@ export function teamMinistryAutoNote(project: ProjectData) {
 }
 
 export function settlementSummaries(project: ProjectData): SettlementSummary[] {
+  const exchangeRatesToKrw = projectExchangeRates(project);
   return project.people
     .map((person) => {
       const personalExpenses = project.expenses.filter(
         (expense) => expense.paymentSource === "personal" && expense.payerId === person.id,
       );
-      const paidPersonally = personalExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+      const paidPersonally = personalExpenses.reduce(
+        (sum, expense) => roundMoney(sum + expenseAmountKrw(expense, exchangeRatesToKrw)),
+        0,
+      );
       const targetAmount = personalExpenses.reduce(
         (sum, expense) => sum + expense.settlementTargetAmount,
         0,
@@ -228,6 +247,7 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
   const expenses = sortAndNumberExpenses(project.expenses);
   const reconciliation = reconciliationSummary({ ...project, expenses });
   const { difference: reconciledDifference } = reconciliation;
+  const exchangeRatesToKrw = projectExchangeRates(project);
 
   if (reconciledDifference !== 0) {
     issues.push({
@@ -253,6 +273,19 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
       scope: "evidence",
       title: "교통비 공통 주유비 증빙이 없습니다",
       detail: "주유비 지출이 있으므로 거리·유류비 산정 증빙을 하나 이상 등록해 주세요. 온라인 파일이나 인쇄 후 붙일 오프라인 부착칸을 여러 개 추가할 수 있습니다.",
+    });
+  }
+
+  for (const currency of ["INR", "JPY"] as const) {
+    const affectedExpenses = expenses.filter((item) => expenseCurrency(item) === currency);
+    if (affectedExpenses.length === 0 || hasExchangeRateForCurrency(currency, exchangeRatesToKrw)) continue;
+    const currencyName = currency === "INR" ? "인도 루피" : "일본 엔";
+    issues.push({
+      id: `missing-common-exchange-rate-${currency}`,
+      severity: "error",
+      scope: "project",
+      title: `${currencyName} 공통 환율이 필요합니다`,
+      detail: `${currency} 지출 ${affectedExpenses.length}건에 공통 적용할 1 ${currencyName === "인도 루피" ? "루피" : "엔"}당 원화 환율을 한 번 입력해 주세요.`,
     });
   }
 
@@ -386,8 +419,8 @@ export function validateProject(project: ProjectData): ValidationIssue[] {
 
   const domesticOffering = expenses
     .filter((item) => item.category === "offering")
-    .reduce((sum, item) => sum + Math.max(0, item.amount), 0);
-  if (domesticOffering > 300_000) {
+    .reduce((sum, item) => sum + expenseAmountKrw(item, exchangeRatesToKrw), 0);
+  if (projectAccountingRegion(project) === "domestic" && domesticOffering > 300_000) {
     issues.push({
       id: "offering-over-domestic-guideline",
       severity: "warning",
@@ -409,7 +442,7 @@ export function applyDerivedState(project: ProjectData): ProjectData {
     : project.meta.headcount > 0
       ? Math.round(existingDues / project.meta.headcount)
       : 0;
-  const duesAmount = duesPerPerson * Math.max(0, project.meta.headcount);
+  const duesAmount = roundMoney(duesPerPerson * Math.max(0, project.meta.headcount));
   const firstDues = project.incomes.find((income) => income.type === "dues");
   const incomes = firstDues
     ? project.incomes
@@ -421,11 +454,27 @@ export function applyDerivedState(project: ProjectData): ProjectData {
   const migratedExpenses = project.expenses.map((expense) => {
     const legacy = expense as Expense & { teamSupportApplied?: boolean };
     const { teamSupportApplied, ...cleanExpense } = legacy;
+    const currency = expenseCurrency(cleanExpense);
+    const exchangeRateToKrw = currency === "KRW"
+      ? undefined
+      : Number.isFinite(cleanExpense.exchangeRateToKrw) && (cleanExpense.exchangeRateToKrw ?? 0) > 0
+        ? cleanExpense.exchangeRateToKrw
+        : undefined;
+    const migrated = {
+      ...cleanExpense,
+      currency,
+      exchangeRateToKrw,
+    };
     return teamSupportApplied === true
-      ? { ...cleanExpense, category: "teamMinistry" as const }
-      : cleanExpense;
+      ? { ...migrated, category: "teamMinistry" as const }
+      : migrated;
   });
-  let expenses = sortAndNumberExpenses(migratedExpenses).map((expense) => {
+  const exchangeRatesToKrw = projectExchangeRates({ ...project, expenses: migratedExpenses });
+  const commonRateExpenses = migratedExpenses.map((expense) => {
+    const { exchangeRateToKrw: _legacyExpenseRate, ...commonRateExpense } = expense;
+    return commonRateExpense;
+  });
+  let expenses = sortAndNumberExpenses(commonRateExpenses).map((expense) => {
     if (expense.paymentSource === "team") {
       return {
         ...expense,
@@ -435,14 +484,28 @@ export function applyDerivedState(project: ProjectData): ProjectData {
         settlementStatus: "not-applicable" as const,
       };
     }
-    const target = expense.settlementTargetAmount || expense.amount;
+    const convertedAmount = expenseAmountKrw(expense, exchangeRatesToKrw);
+    const inferredTargetMode = expense.settlementTargetMode
+      ?? (expenseCurrency(expense) === "KRW"
+        && expense.settlementTargetAmount > 0
+        && Math.abs(expense.settlementTargetAmount - expense.amount) > 0.000001
+        ? "manual"
+        : "auto");
+    const target = inferredTargetMode === "manual"
+      ? expense.settlementTargetAmount
+      : convertedAmount;
     const status: Expense["settlementStatus"] =
       expense.settledAmount <= 0
         ? "pending"
         : expense.settledAmount >= target
           ? "settled"
           : "partial";
-    return { ...expense, settlementTargetAmount: target, settlementStatus: status };
+    return {
+      ...expense,
+      settlementTargetAmount: target,
+      settlementTargetMode: inferredTargetMode,
+      settlementStatus: status,
+    };
   });
   const firstTeamMinistryId = expenses.find((expense) => expense.category === "teamMinistry")?.id;
   if (firstTeamMinistryId) {
@@ -462,5 +525,16 @@ export function applyDerivedState(project: ProjectData): ProjectData {
       ? { ...expense, note: "", noteMode: undefined }
       : expense);
   }
-  return { ...project, duesPerPerson, incomes, expenses, updatedAt: new Date().toISOString() };
+  return {
+    ...project,
+    meta: {
+      ...project.meta,
+      accountingRegion: projectAccountingRegion(project),
+    },
+    duesPerPerson,
+    incomes,
+    expenses,
+    exchangeRatesToKrw,
+    updatedAt: new Date().toISOString(),
+  };
 }

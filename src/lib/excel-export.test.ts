@@ -264,6 +264,73 @@ describe("공식 템플릿 비파괴 내보내기", () => {
     expect(workbook).toContain(`'국내-금전출납부'!$A$1:$F$${expectedFooterEnd}`);
   });
 
+  it("해외 회계 제목·시트명과 루피·엔의 소수 원화 환산액을 출력한다", async () => {
+    const originalBytes = await readFile(templatePath);
+    const beforeHash = createHash("sha256").update(originalBytes).digest("hex");
+    vi.stubGlobal("fetch", async () => new Response(originalBytes));
+
+    const project = createEmptyProject();
+    project.meta.accountingRegion = "overseas";
+    project.meta.community = "SNS CROSS";
+    project.meta.teamName = "인도일본팀";
+    project.exchangeRatesToKrw = { INR: 16.55, JPY: 9.12 };
+    project.expenses = [
+      { ...makeExpense(1), amount: 8_400.25, currency: "INR" },
+      { ...makeExpense(2), amount: 100.5, currency: "JPY" },
+      { ...makeExpense(3), amount: 10.75, currency: "KRW" },
+    ];
+
+    const outputBytes = await createAccountingWorkbook(project);
+    const verificationDirectory = path.resolve(process.cwd(), "artifacts/verification");
+    await mkdir(verificationDirectory, { recursive: true });
+    await writeFile(path.join(verificationDirectory, "accounting-overseas-output.xlsx"), outputBytes);
+    const outputZip = await JSZip.loadAsync(outputBytes);
+    const workbook = await outputZip.file("xl/workbook.xml")!.async("string");
+    expect(workbook).toContain('name="총괄표-해외"');
+    expect(workbook).toContain('name="해외-회계보고서 "');
+    expect(workbook).toContain('name="해외-금전출납부"');
+    expect(workbook).toContain("'해외-금전출납부'!$A$1:$F$26");
+
+    const sharedStrings = new DOMParser().parseFromString(
+      await outputZip.file("xl/sharedStrings.xml")!.async("string"),
+      "application/xml",
+    );
+    const sharedValues = sharedStringValues(sharedStrings);
+    const summary = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet1.xml")!.async("string"),
+      "application/xml",
+    );
+    const report = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet2.xml")!.async("string"),
+      "application/xml",
+    );
+    const ledger = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet3.xml")!.async("string"),
+      "application/xml",
+    );
+    const receiptTemplate = new DOMParser().parseFromString(
+      await outputZip.file("xl/worksheets/sheet6.xml")!.async("string"),
+      "application/xml",
+    );
+    expect(sharedStringCellText(summary, sharedValues, "A1")).toContain("회계보고 - 해외");
+    expect(sharedStringCellText(report, sharedValues, "A1")).toContain("회계보고서 - 해외");
+    expect(sharedStringCellText(ledger, sharedValues, "A1")).toContain("-해외 인도일본팀");
+    expect(sharedStringCellText(receiptTemplate, sharedValues, "A1")).toContain("- 해외 인도일본팀 - 영수증철");
+    expect(Number(ledger.querySelector('c[r="D5"] v')?.textContent)).toBe(139_024.1375);
+    expect(Number(ledger.querySelector('c[r="D6"] v')?.textContent)).toBe(916.56);
+    expect(Number(ledger.querySelector('c[r="D7"] v')?.textContent)).toBe(10.75);
+
+    const styles = new DOMParser().parseFromString(
+      await outputZip.file("xl/styles.xml")!.async("string"),
+      "application/xml",
+    );
+    const decimalFormat = [...styles.querySelectorAll("numFmt")].find((item) => item.getAttribute("formatCode")?.includes("######"));
+    const detailStyle = [...styles.querySelectorAll("cellXfs > xf")][Number(ledger.querySelector('c[r="D5"]')?.getAttribute("s"))];
+    expect(decimalFormat).toBeDefined();
+    expect(detailStyle?.getAttribute("numFmtId")).toBe(decimalFormat?.getAttribute("numFmtId"));
+    expect(createHash("sha256").update(await readFile(templatePath)).digest("hex")).toBe(beforeHash);
+  });
+
   it("세부내역과 비고의 실제 줄 수 중 큰 값으로 거래행 높이를 정한다", async () => {
     const originalBytes = await readFile(templatePath);
     vi.stubGlobal("fetch", async () => new Response(originalBytes));

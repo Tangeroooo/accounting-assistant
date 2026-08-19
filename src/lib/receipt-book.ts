@@ -1,4 +1,5 @@
 import { getCategory, type Attachment, type Expense, type OfflineReceiptHolder, type ProjectData } from "../types";
+import { formatExpenseAmount } from "./currency";
 
 export const RECEIPT_PAGE_WIDTH_MM = 210;
 export const DEFAULT_RECEIPT_BOOK_SIDE_MARGIN_MM = 10;
@@ -84,6 +85,7 @@ export function buildReceiptBookItems(project: ProjectData): ReceiptBookItem[] {
     date: "",
     content: fuelEvidence.title || "주유비 산정 증빙",
     amount: 0,
+    currency: "KRW",
     note: "",
     receiptMode: "online-printable",
     originalConfirmed: false,
@@ -140,7 +142,7 @@ export function exportedOfflinePlaceholderLabel(item: ReceiptBookItem) {
 export function receiptAmountLabel(item: ReceiptBookItem) {
   return item.evidenceId || item.receiptSequence !== 1
     ? undefined
-    : `${item.expense.amount.toLocaleString("ko-KR")}원`;
+    : formatExpenseAmount(item.expense);
 }
 
 export function receiptWatermarkDisplayLabel(item: ReceiptBookItem) {

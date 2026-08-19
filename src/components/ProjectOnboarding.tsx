@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, FileSpreadsheet, FolderOpen, LoaderCircle, ReceiptText, Sparkles } from "lucide-react";
 import { useState } from "react";
 
-import type { IncomeType, ProjectData } from "../types";
+import type { AccountingRegion, IncomeType, ProjectData } from "../types";
 import MoneyInput from "./MoneyInput";
 
 interface ProjectOnboardingProps {
@@ -58,8 +58,9 @@ export default function ProjectOnboarding({ project, projectFilePath, requiresDi
       </div>
       <div className="onboarding-content">
         {step === 0 && <>
-          <div className="onboarding-heading"><span>1 / 3</span><h2>어느 팀의 회계인가요?</h2><p>공동체와 팀 이름은 공식 보고서 제목에 사용됩니다.</p></div>
+          <div className="onboarding-heading"><span>1 / 3</span><h2>어느 팀의 회계인가요?</h2><p>국내·해외 구분과 팀 이름은 공식 보고서와 영수증철 제목에 사용됩니다.</p></div>
           <div className="onboarding-fields">
+            <label className="onboarding-region-field"><span>회계 구분</span><select value={meta.accountingRegion ?? "domestic"} onChange={(event) => setMeta("accountingRegion", event.currentTarget.value as AccountingRegion)}><option value="domestic">국내 회계</option><option value="overseas">해외 회계 · 루피/엔 환율 사용</option></select><small>해외 회계에서는 지출마다 KRW·INR·JPY 중 결제 통화를 고르고, 실제 사용한 해외 통화의 공통 환율만 한 번 입력합니다.</small></label>
             <OnboardingField label="공동체" value={meta.community} placeholder="예: SNS CROSS" onChange={(value) => setMeta("community", value)} />
             <OnboardingField label="팀 이름" value={meta.teamName} placeholder="예: 강릉팀" onChange={(value) => setMeta("teamName", value)} />
             <OnboardingField label="그룹" value={meta.groupName} placeholder="선택 입력" onChange={(value) => setMeta("groupName", value)} />

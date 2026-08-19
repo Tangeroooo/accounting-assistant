@@ -14,8 +14,25 @@ export type IncomeType = "dues" | "teamSupport" | "flowing";
 export type ReceiptMode = "offline-original" | "online-printable";
 export type PaymentSource = "team" | "personal";
 export type SettlementStatus = "not-applicable" | "pending" | "partial" | "settled";
+export type AccountingRegion = "domestic" | "overseas";
+export type CurrencyCode = "KRW" | "INR" | "JPY";
+export type ForeignCurrencyCode = Exclude<CurrencyCode, "KRW">;
+export type ExchangeRatesToKrw = Partial<Record<ForeignCurrencyCode, number>>;
+
+export const CURRENCY_DEFINITIONS: ReadonlyArray<{
+  code: CurrencyCode;
+  label: string;
+  unitLabel: string;
+  symbol: string;
+}> = [
+  { code: "KRW", label: "대한민국 원", unitLabel: "원", symbol: "₩" },
+  { code: "INR", label: "인도 루피", unitLabel: "루피", symbol: "₹" },
+  { code: "JPY", label: "일본 엔", unitLabel: "엔", symbol: "¥" },
+];
 
 export interface ProjectMeta {
+  /** 기존 프로젝트에는 값이 없으므로 국내로 해석합니다. */
+  accountingRegion?: AccountingRegion;
   community: string;
   groupName: string;
   teamName: string;
@@ -96,7 +113,11 @@ export interface Expense {
   category: CategoryId;
   date: string;
   content: string;
+  /** 결제 당시 통화로 입력한 원 금액입니다. 기존 프로젝트는 KRW로 해석합니다. */
   amount: number;
+  currency?: CurrencyCode;
+  /** @deprecated 초기 개발 버전의 지출별 환율. 프로젝트 공통 환율로 자동 이전합니다. */
+  exchangeRateToKrw?: number;
   note: string;
   noteMode?: "auto" | "manual";
   receiptMode: ReceiptMode;
@@ -109,6 +130,8 @@ export interface Expense {
   paymentSource: PaymentSource;
   payerId?: string;
   settlementTargetAmount: number;
+  /** 자동이면 원화 환산액을 따라가고, 수동이면 사용자가 적은 정산액을 보존합니다. */
+  settlementTargetMode?: "auto" | "manual";
   settledAmount: number;
   settledAt?: string;
   settlementStatus: SettlementStatus;
@@ -134,6 +157,8 @@ export interface ProjectData {
   people: Person[];
   expenses: Expense[];
   categoryEvidence: CategoryEvidence[];
+  /** 해외 통화 1단위당 원화 환율. 프로젝트에서 통화별로 한 번만 입력합니다. */
+  exchangeRatesToKrw?: ExchangeRatesToKrw;
   /** 영수증철 A4 용지의 한쪽 좌우 여백(mm). 기존 프로젝트는 10mm로 처리한다. */
   receiptBookSideMarginMm?: number;
   receiptNumbersFinalized: boolean;
@@ -163,6 +188,7 @@ export const createEmptyProject = (): ProjectData => ({
   schemaVersion: 1,
   id: crypto.randomUUID(),
   meta: {
+    accountingRegion: "domestic",
     community: "",
     groupName: "",
     teamName: "",
@@ -182,6 +208,7 @@ export const createEmptyProject = (): ProjectData => ({
   people: [],
   expenses: [],
   categoryEvidence: [],
+  exchangeRatesToKrw: {},
   receiptBookSideMarginMm: 10,
   receiptNumbersFinalized: false,
   updatedAt: new Date().toISOString(),

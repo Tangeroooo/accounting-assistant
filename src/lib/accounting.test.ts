@@ -123,6 +123,58 @@ describe("교육자료 기반 검산", () => {
     expect(validateProject(project).some((issue) => issue.id === "team-ministry-over-support")).toBe(false);
   });
 
+  it("루피·엔 소수 금액을 통화별 공통 환율로 원화 환산해 검산하고 정산한다", () => {
+    const project = createEmptyProject();
+    project.meta.accountingRegion = "overseas";
+    project.exchangeRatesToKrw = { INR: 16.55, JPY: 9.12 };
+    project.incomes = [{ id: "income", type: "flowing", amount: 139_951.4475, receivedAt: "", memo: "" }];
+    project.people = [{ id: "payer", name: "김회계", bankMemo: "" }];
+    project.expenses = [
+      expense({ amount: 8_400.25, currency: "INR" }),
+      expense({ amount: 100.5, currency: "JPY", paymentSource: "personal", payerId: "payer", settlementTargetMode: "auto" }),
+      expense({ amount: 10.75, currency: "KRW" }),
+    ];
+
+    expect(reconciliationSummary(project).expense.total).toBe(139_951.4475);
+    expect(reconciliationSummary(project).difference).toBe(0);
+    expect(settlementSummaries(applyDerivedState(project))[0]).toMatchObject({
+      paidPersonally: 916.56,
+      targetAmount: 916.56,
+    });
+  });
+
+  it("실제로 사용한 해외 통화의 공통 환율만 한 번씩 요구한다", () => {
+    const project = createEmptyProject();
+    project.meta.accountingRegion = "overseas";
+    project.expenses = [
+      expense({ id: "inr-1", amount: 500.75, currency: "INR" }),
+      expense({ id: "inr-2", amount: 100.25, currency: "INR" }),
+    ];
+
+    const exchangeIssues = validateProject(project).filter((issue) => issue.id.includes("exchange-rate"));
+    expect(exchangeIssues).toEqual([expect.objectContaining({
+      id: "missing-common-exchange-rate-INR",
+      title: "인도 루피 공통 환율이 필요합니다",
+      detail: expect.stringContaining("INR 지출 2건"),
+    })]);
+  });
+
+  it("초기 개발 버전의 지출별 환율은 공통 환율로 한 번만 이전한다", () => {
+    const project = createEmptyProject();
+    project.meta.accountingRegion = "overseas";
+    project.expenses = [expense({ amount: 500, currency: "INR", exchangeRateToKrw: 16.55 })];
+
+    const migrated = applyDerivedState(project);
+    expect(migrated.exchangeRatesToKrw?.INR).toBe(16.55);
+    expect(migrated.expenses[0].exchangeRateToKrw).toBeUndefined();
+
+    const cleared = applyDerivedState({
+      ...migrated,
+      exchangeRatesToKrw: { ...migrated.exchangeRatesToKrw, INR: undefined },
+    });
+    expect(cleared.exchangeRatesToKrw?.INR).toBeUndefined();
+  });
+
   it("팀별사역비 첫 행에 지원금과 회비 충당액을 원본 예시 형식으로 자동 작성한다", () => {
     const project = createEmptyProject();
     project.incomes = [{ id: "support", type: "teamSupport", amount: 300_000, receivedAt: "", memo: "" }];
@@ -267,6 +319,8 @@ describe("교육자료 기반 검산", () => {
     const issues = validateProject(project);
     expect(issues.some((issue) => issue.id === "expense-gift-team-ministry-gift")).toBe(true);
     expect(issues.some((issue) => issue.id === "offering-over-domestic-guideline")).toBe(true);
+    project.meta.accountingRegion = "overseas";
+    expect(validateProject(project).some((issue) => issue.id === "offering-over-domestic-guideline")).toBe(false);
   });
 
   it("개인 선결제는 사람별로 합산하고 공식 지출금액과 동일하게 검산한다", () => {

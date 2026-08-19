@@ -257,6 +257,16 @@ describe("영수증철 페이지 구성", () => {
     expect(items.map(receiptAmountLabel)).toEqual(["10,000원", undefined, undefined]);
   });
 
+  it("해외 영수증 첫 이미지에는 원 통화와 소수 금액을 표시한다", () => {
+    const project = createEmptyProject();
+    project.meta.accountingRegion = "overseas";
+    project.expenses = [{ ...expense(1), amount: 8_400.25, currency: "INR" }];
+    const items = buildReceiptBookItems(project);
+
+    expect(receiptAmountLabel(items[0])).toBe("₹8,400.25 INR");
+    expect(receiptWatermarkDisplayLabel(items[0])).toContain("₹8,400.25 INR");
+  });
+
   it("항목이 바뀌면 남은 공간과 관계없이 새 페이지에서 시작한다", () => {
     const project = createEmptyProject();
     project.expenses = [

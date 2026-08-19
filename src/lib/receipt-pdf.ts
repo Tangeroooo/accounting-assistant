@@ -3,6 +3,7 @@ import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 import type { Attachment, ProjectData } from "../types";
+import { accountingRegionLabel } from "./currency";
 import { attachmentRenderAsset } from "./attachment-assets";
 import { attachmentAbsolutePath, readAttachmentBytes } from "./desktop";
 import {
@@ -53,7 +54,7 @@ function drawPageHeader(context: CanvasRenderingContext2D, project: ProjectData)
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.font = `700 ${Math.round(mm(5))}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
-  context.fillText(`${project.meta.community || "○○○"} 공동체 - 국내 ${project.meta.teamName || "○○○팀"} - 영수증철`, mm(PAGE_WIDTH_MM / 2), mm(12));
+  context.fillText(`${project.meta.community || "○○○"} 공동체 - ${accountingRegionLabel(project)} ${project.meta.teamName || "○○○팀"} - 영수증철`, mm(PAGE_WIDTH_MM / 2), mm(12));
 }
 
 async function renderPdfFirstPage(bytes: Uint8Array) {
@@ -191,7 +192,7 @@ export async function renderReceiptBookObjectPages(project: ProjectData): Promis
   const sideMarginMm = normalizeReceiptBookSideMarginMm(project.receiptBookSideMarginMm);
   const pages = layoutReceiptBookItems(items, measuredAspectRatios, receiptBookFlowWidthMm(sideMarginMm));
   if (pages.length === 0) throw new Error("내보낼 영수증이 없습니다.");
-  const title = `${project.meta.community || "○○○"} 공동체 - 국내 ${project.meta.teamName || "○○○팀"} - 영수증철`;
+  const title = `${project.meta.community || "○○○"} 공동체 - ${accountingRegionLabel(project)} ${project.meta.teamName || "○○○팀"} - 영수증철`;
 
   return pages.map((placements) => ({
     title,

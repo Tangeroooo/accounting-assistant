@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import templateUrl from "../../resources/accounting-template.xlsx?url";
 import { CATEGORY_DEFINITIONS, getCategory, type Expense, type ProjectData } from "../types";
 import { applyDerivedState, isAutoTeamMinistryNote, teamMinistryExpenseTotal } from "./accounting";
+import { accountingRegionLabel, projectExchangeRates, projectExpenseAmountKrw } from "./currency";
 
 const NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
@@ -240,6 +241,7 @@ const updateFormulaCell = (
 };
 
 function updateAccountingReport(document: XmlDocument, project: ProjectData) {
+  const regionLabel = accountingRegionLabel(project);
   const income = {
     dues: project.incomes.filter((item) => item.type === "dues").reduce((sum, item) => sum + item.amount, 0),
     teamSupport: project.incomes.filter((item) => item.type === "teamSupport").reduce((sum, item) => sum + item.amount, 0),
@@ -250,13 +252,17 @@ function updateAccountingReport(document: XmlDocument, project: ProjectData) {
       definition.id,
       project.expenses
         .filter((expense) => expense.category === definition.id)
-        .reduce((sum, expense) => sum + expense.amount, 0),
+        .reduce((sum, expense) => sum + projectExpenseAmountKrw(project, expense), 0),
     ]),
   ) as Record<(typeof CATEGORY_DEFINITIONS)[number]["id"], number>;
   const totalIncome = income.dues + income.teamSupport + income.flowing;
   const totalExpense = Object.values(categoryTotals).reduce((sum, value) => sum + value, 0);
-  const returnAmount = Math.max(income.teamSupport - teamMinistryExpenseTotal(project.expenses), 0);
+  const returnAmount = Math.max(
+    income.teamSupport - teamMinistryExpenseTotal(project.expenses, projectExchangeRates(project)),
+    0,
+  );
 
+  updateTextCell(document, "A1", `2026년 여름 아웃리치 회계보고서 - ${regionLabel}`);
   updateTextCell(document, "D4", `이름 : ${project.meta.accountantName}`);
   updateTextCell(document, "E4", `이름 : ${project.meta.pastorName}`);
   updateTextCell(document, "A6", ` ▶ 공동체 : ${project.meta.community}`);
@@ -298,7 +304,7 @@ function updateCommunitySummary(document: XmlDocument, project: ProjectData) {
   const categoryTotals = CATEGORY_DEFINITIONS.map((definition) =>
     project.expenses
       .filter((expense) => expense.category === definition.id)
-      .reduce((sum, expense) => sum + expense.amount, 0),
+      .reduce((sum, expense) => sum + projectExpenseAmountKrw(project, expense), 0),
   );
   const incomeValues = [incomeByType("dues"), incomeByType("teamSupport"), incomeByType("flowing")];
   const totalIncome = incomeValues.reduce((sum, value) => sum + value, 0);
@@ -307,7 +313,7 @@ function updateCommunitySummary(document: XmlDocument, project: ProjectData) {
   updateTextCell(
     document,
     "A1",
-    `[${project.meta.community || "○○○"} 공동체 ] 2026년 여름 아웃리치 회계보고 - 국내`,
+    `[${project.meta.community || "○○○"} 공동체 ] 2026년 여름 아웃리치 회계보고 - ${accountingRegionLabel(project)}`,
   );
   updateTextCell(document, "B6", project.meta.destination || project.meta.teamName);
   updateNumberCell(document, "C6", project.meta.headcount);
@@ -390,7 +396,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   updateTextCell(
     document,
     "A1",
-    `${project.meta.community || "○○○"} 공동체 -국내 ${project.meta.teamName || "○○○팀"} - 금전출납부`,
+    `${project.meta.community || "○○○"} 공동체 -${accountingRegionLabel(project)} ${project.meta.teamName || "○○○팀"} - 금전출납부`,
   );
 
   const styleSources = TEMPLATE_RANGES.map((range) => ({
@@ -488,7 +494,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
         if (expense) {
           if (column === "B") setText(document, cell, formatLedgerDate(expense.date));
           if (column === "C") setText(document, cell, expenseContent(expense));
-          if (column === "D") setNumber(document, cell, expense.amount);
+          if (column === "D") setNumber(document, cell, projectExpenseAmountKrw(project, expense));
           if (column === "E") setNumber(document, cell, expense.receiptNumber ?? offset + 1);
           if (column === "F" && expense.note) setText(document, cell, expense.note);
         }
@@ -518,7 +524,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
         copyRawCellContent(cell, standardSubtotalLabelSource);
       }
       if (column === "D") {
-        const cached = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+        const cached = expenses.reduce((sum, expense) => sum + projectExpenseAmountKrw(project, expense), 0);
         setFormula(document, cell, `SUM(D${start}:D${total - 1})`, cached);
       }
       appendCellOrdered(totalRow, cell);
@@ -529,7 +535,7 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   }
 
   const grandTotalRow = cursor;
-  const grandTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const grandTotal = project.expenses.reduce((sum, expense) => sum + projectExpenseAmountKrw(project, expense), 0);
   const row = ensureRow(document, sheetData, grandTotalRow);
   setRowHeight(row, 16.5);
   for (const column of ["A", "B", "C", "D", "E", "F"]) {
@@ -573,15 +579,83 @@ function replaceLedger(document: XmlDocument, project: ProjectData) {
   return { grandTotalRow, printMaxRow };
 }
 
-function updatePrintArea(document: XmlDocument, maxRow: number) {
+function updatePrintArea(document: XmlDocument, maxRow: number, ledgerSheetName: string) {
   const names = all<Element>(document, "definedName");
   const ledgerArea = names.find(
     (node) => node.getAttribute("name") === "_xlnm.Print_Area" && node.getAttribute("localSheetId") === "2",
   );
-  if (ledgerArea) ledgerArea.textContent = `'국내-금전출납부'!$A$1:$F$${maxRow}`;
+  if (ledgerArea) ledgerArea.textContent = `'${ledgerSheetName}'!$A$1:$F$${maxRow}`;
   const calculation = document.querySelector("calcPr");
   calculation?.setAttribute("fullCalcOnLoad", "1");
   calculation?.setAttribute("forceFullCalc", "1");
+}
+
+function updateRegionalWorkbookNames(document: XmlDocument, project: ProjectData) {
+  const regionLabel = accountingRegionLabel(project);
+  const names = [
+    `총괄표-${regionLabel}`,
+    `${regionLabel}-회계보고서 `,
+    `${regionLabel}-금전출납부`,
+  ];
+  const sheets = all<Element>(document, "sheets sheet");
+  names.forEach((name, index) => sheets[index]?.setAttribute("name", name));
+
+  for (const definedName of all<Element>(document, "definedName")) {
+    const localSheetId = Number(definedName.getAttribute("localSheetId"));
+    if (localSheetId >= 0 && localSheetId <= 2 && names[localSheetId]) {
+      const range = definedName.textContent?.split("!").at(-1) ?? "";
+      definedName.textContent = `'${names[localSheetId]}'!${range}`;
+    }
+  }
+  return names[2];
+}
+
+/** 소수 원화가 있는 셀만 기존 스타일을 복제해 소수점이 화면에서도 보이게 합니다. */
+function applyOptionalDecimalStyles(stylesDocument: XmlDocument, worksheets: XmlDocument[]) {
+  const decimalCells = worksheets.flatMap((worksheet) =>
+    all<Element>(worksheet, "c").filter((cell) => {
+      if (cell.getAttribute("t")) return false;
+      const value = Number(cell.querySelector(":scope > v")?.textContent);
+      return Number.isFinite(value) && !Number.isInteger(value);
+    }),
+  );
+  if (decimalCells.length === 0) return false;
+
+  const root = stylesDocument.documentElement;
+  const cellXfs = stylesDocument.querySelector("cellXfs");
+  if (!cellXfs) return false;
+  let numberFormats = stylesDocument.querySelector("numFmts");
+  if (!numberFormats) {
+    numberFormats = stylesDocument.createElementNS(NS, "numFmts");
+    numberFormats.setAttribute("count", "0");
+    root.insertBefore(numberFormats, cellXfs);
+  }
+  const usedIds = all<Element>(stylesDocument, "numFmt").map((item) => Number(item.getAttribute("numFmtId")));
+  const numberFormatId = Math.max(200, ...usedIds.filter(Number.isFinite)) + 1;
+  const numberFormat = stylesDocument.createElementNS(NS, "numFmt");
+  numberFormat.setAttribute("numFmtId", String(numberFormatId));
+  numberFormat.setAttribute("formatCode", "#,##0.######;[Red]-#,##0.######;0");
+  numberFormats.appendChild(numberFormat);
+  numberFormats.setAttribute("count", String(numberFormats.querySelectorAll(":scope > numFmt").length));
+
+  const styleMap = new Map<number, number>();
+  for (const cell of decimalCells) {
+    const sourceStyleIndex = Number(cell.getAttribute("s") ?? 0);
+    let decimalStyleIndex = styleMap.get(sourceStyleIndex);
+    if (decimalStyleIndex === undefined) {
+      const sourceStyle = all<Element>(cellXfs, ":scope > xf")[sourceStyleIndex];
+      if (!sourceStyle) continue;
+      const decimalStyle = sourceStyle.cloneNode(true) as Element;
+      decimalStyle.setAttribute("numFmtId", String(numberFormatId));
+      decimalStyle.setAttribute("applyNumberFormat", "1");
+      cellXfs.appendChild(decimalStyle);
+      decimalStyleIndex = cellXfs.querySelectorAll(":scope > xf").length - 1;
+      styleMap.set(sourceStyleIndex, decimalStyleIndex);
+    }
+    cell.setAttribute("s", String(decimalStyleIndex));
+  }
+  cellXfs.setAttribute("count", String(cellXfs.querySelectorAll(":scope > xf").length));
+  return true;
 }
 
 export async function createAccountingWorkbook(projectInput: ProjectData) {
@@ -592,7 +666,8 @@ export async function createAccountingWorkbook(projectInput: ProjectData) {
   const sheetFile = zip.file("xl/worksheets/sheet3.xml");
   const workbookFile = zip.file("xl/workbook.xml");
   const sharedStringsFile = zip.file("xl/sharedStrings.xml");
-  if (!sheetFile || !workbookFile || !sharedStringsFile) {
+  const stylesFile = zip.file("xl/styles.xml");
+  if (!sheetFile || !workbookFile || !sharedStringsFile || !stylesFile) {
     throw new Error("공식 템플릿 구조가 예상과 다릅니다.");
   }
 
@@ -607,15 +682,37 @@ export async function createAccountingWorkbook(projectInput: ProjectData) {
   const summaryDocument = parseXml(await summaryFile.async("string"));
   updateCommunitySummary(summaryDocument, project);
 
+  const receiptTemplateFile = accountingRegionLabel(project) === "해외"
+    ? zip.file("xl/worksheets/sheet6.xml")
+    : null;
+  const receiptTemplateDocument = receiptTemplateFile
+    ? parseXml(await receiptTemplateFile.async("string"))
+    : null;
+  if (receiptTemplateDocument) {
+    updateTextCell(
+      receiptTemplateDocument,
+      "A1",
+      `${project.meta.community || "○○○"} 공동체 - 해외 ${project.meta.teamName || "○○○팀"} - 영수증철`,
+    );
+  }
+
   const sharedStringsDocument = parseXml(await sharedStringsFile.async("string"));
-  const changedWorksheets = [summaryDocument, reportDocument, ledgerDocument];
+  const changedWorksheets = [
+    summaryDocument,
+    reportDocument,
+    ledgerDocument,
+    ...(receiptTemplateDocument ? [receiptTemplateDocument] : []),
+  ];
   moveInlineStringsToSharedStrings(sharedStringsDocument, changedWorksheets);
+
+  const stylesDocument = parseXml(await stylesFile.async("string"));
+  const stylesChanged = applyOptionalDecimalStyles(stylesDocument, changedWorksheets);
 
   let sharedStringReferenceCount = changedWorksheets.reduce(
     (sum, document) => sum + countSharedStringReferences(document),
     0,
   );
-  for (const sheetNumber of [4, 5, 6]) {
+  for (const sheetNumber of receiptTemplateDocument ? [4, 5] : [4, 5, 6]) {
     const unchangedSheet = zip.file(`xl/worksheets/sheet${sheetNumber}.xml`);
     if (!unchangedSheet) continue;
     sharedStringReferenceCount += countSharedStringReferences(
@@ -627,10 +724,15 @@ export async function createAccountingWorkbook(projectInput: ProjectData) {
   zip.file("xl/worksheets/sheet1.xml", serializeXml(summaryDocument));
   zip.file("xl/worksheets/sheet2.xml", serializeXml(reportDocument));
   zip.file("xl/worksheets/sheet3.xml", serializeXml(ledgerDocument));
+  if (receiptTemplateDocument) {
+    zip.file("xl/worksheets/sheet6.xml", serializeXml(receiptTemplateDocument));
+  }
   zip.file("xl/sharedStrings.xml", serializeXml(sharedStringsDocument));
+  if (stylesChanged) zip.file("xl/styles.xml", serializeXml(stylesDocument));
 
   const workbookDocument = parseXml(await workbookFile.async("string"));
-  updatePrintArea(workbookDocument, printMaxRow);
+  const ledgerSheetName = updateRegionalWorkbookNames(workbookDocument, project);
+  updatePrintArea(workbookDocument, printMaxRow, ledgerSheetName);
   zip.file("xl/workbook.xml", serializeXml(workbookDocument));
 
   // 값이 바뀐 파일은 Excel이 전체 수식을 다시 계산하도록 기존 캐시 체인을 제거합니다.
